@@ -21,7 +21,7 @@ It is a single static web page. There is nothing to install and no server: it ru
 
 ## Your data
 
-Everything you type stays in your browser. It is kept in your browser's local storage on this site (so it is there when you come back) and is never sent to a server. Files you export (Excel, PowerPoint) contain what you entered, so handle them like any other business document. Clearing your browser's site data removes the saved copy. Because this site shares its address with other GitHub Pages sites under the same account, avoid entering anything confidential on a shared or public computer.
+Everything you type stays in your browser. It is kept in your browser's local storage on this site (so it is there when you come back) and is never sent to a server. The only thing collected is anonymous usage statistics for this public site (Google Analytics: page visits, with the visitor's approximate location and device type); nothing you type into the app is included, and it is switched off if your browser sends a Do Not Track signal. Files you export (Excel, PowerPoint) contain what you entered, so handle them like any other business document. Clearing your browser's site data removes the saved copy. Because this site shares its address with other GitHub Pages sites under the same account, avoid entering anything confidential on a shared or public computer.
 
 ## What it can do
 

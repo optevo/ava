@@ -13,6 +13,21 @@
     document.documentElement.setAttribute('data-theme', t);
   })();
 </script>
+<script>
+  /* Usage statistics (Google Analytics): loaded only on the public site, never when run locally or from a file,
+     and skipped when the browser asks not to be tracked. It counts visits only; nothing typed into the app is sent. */
+  (function () {
+    if (location.hostname !== 'optevo.github.io') return;
+    if (navigator.doNotTrack === '1' || window.doNotTrack === '1') return;
+    var s = document.createElement('script');
+    s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=G-9N3JNKPW54';
+    document.head.appendChild(s);
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function () { dataLayer.push(arguments); };
+    gtag('js', new Date());
+    gtag('config', 'G-9N3JNKPW54');
+  })();
+</script>
 <style>
   :root, html[data-theme="dark"] {
     --bg: #0d0e11; --panel: #16181d; --panel2: #1d2027; --line: #2a2e37; --grid: #262a33;
