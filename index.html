@@ -192,8 +192,17 @@
   #yrpop .yrt { font-weight: 700; margin-bottom: 2px; } #yrpop .chk { display: flex; align-items: flex-start; gap: 8px; margin: 4px 0; line-height: 1.35; } #yrpop .chk input { flex: none; margin-top: 2px; }   /* the choice text wraps beside its radio, in any language */ #yrpop .yrr { margin: 6px 0 2px 22px; } #yrpop .yrr input { width: 80px; }
   #yrpop .yrtab { width: 100%; margin: 6px 0 0; } #yrpop .yrtab td { padding: 2px 4px; font-size: 12px; } #yrpop .yrtab input { width: 100%; text-align: right; } #yrpop .yrb { margin-top: 8px; text-align: right; }
   .rsub { font-size: 11px; color: var(--muted); margin: 1px 0 4px; line-height: 1.35; } .rsub a.more { cursor: pointer; }
+  .typsize { margin: 4px 0 6px; font-size: 13px; } .typsize .b { padding: 2px 9px; } .typsize b { display: inline-block; min-width: 64px; text-align: center; } .typtp { margin-left: 16px; color: var(--muted); }
+  .sdlchead { margin: 4px 0 6px; font-size: 14px; }
   .sdlcview { margin: 0 0 8px; }
   td.edl { white-space: nowrap; font-size: 12px; } td.edl a.more { cursor: pointer; }
+  .sdlc-edbar { text-align: right; margin: 0 0 6px; }
+  .sdlc-editing td.edl { min-width: 420px; }
+  .edgrp { margin: 0 0 6px; } .edline { display: grid; grid-template-columns: minmax(120px, 1fr) 96px 78px; gap: 6px; align-items: center; margin: 2px 0; }
+  .edline.edh { font-size: 11px; color: var(--muted); text-align: right; } .edline.edh span:first-child { text-align: left; }
+  .edline input { width: 100%; text-align: right; } .edn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  .edcat { font-size: 11px; font-weight: 700; color: var(--muted); margin: 6px 0 2px; }
+  .edrates { margin-top: 4px; }
   input.viamap { border-left: 3px solid var(--os) !important; } input.ownshare { border-left: 3px solid var(--warn) !important; }
   .sens { display: flex; gap: 12px; align-items: center; margin: 10px 0 4px; font-size: 12.5px; color: var(--muted); } .sens input[type=range] { width: 220px; }
   .appc.closed .bpanel { display: none; } .appc.closed { padding-bottom: 6px; } .apph button.car { padding: 3px 0; width: 22px; }
@@ -465,6 +474,7 @@
   .bd.i3 { grid-template-columns: minmax(150px, 1fr) 150px 80px 100px 32px; }
   .bd.t6 { grid-template-columns: minmax(170px, 1fr) 112px 92px 74px 104px 32px; }
   .bd.t5 { grid-template-columns: minmax(170px, 1fr) 112px 92px 104px 32px; }
+  .bd.t5p { grid-template-columns: minmax(150px, 1fr) 128px 104px 84px 98px 32px; }
   .bd.t8 { grid-template-columns: minmax(150px, 1fr) 140px 72px 84px 72px 96px 96px 32px; }
   .bd .r { text-align: right; }
   .cmpgrid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.3fr); gap: 16px; align-items: start; }

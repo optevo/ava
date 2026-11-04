@@ -434,7 +434,7 @@
     if ((m = /^(mix)\.(os|alt)\.(\w+)$/.exec(key))) return [tt('Role mix: {role} ({side})', { role: tt(roleLabel(m[3])), side: side(m[2]) }), tt('How many of this role there are for each developer.')];
     if ((m = /^rates\.(\w+)$/.exec(key))) return [tt('Hourly rate: {role}', { role: tt(roleLabel(m[1])) }), tt('The loaded cost of one hour of this role, in the assessment currency.')];
     if ((m = /^cases\.(\w+)\.(advantage|value)$/.exec(key))) return [tt('Scenario {name}: ', { name: tt(humanise(m[1])) }) + tt(FIELD_LABEL[m[2]]), ''];
-    if ((m = /^stages\.(\w+)\.(os|alt)$/.exec(key))) return [tt('{stage}: weeks ({side})', { stage: tt(humanise(m[1])), side: side(m[2]) }), tt('Active weeks for this stage of one application.')];
+    if ((m = /^stages\.(\w+)\.(os|alt)$/.exec(key))) return [tt('{stage}: weeks ({side})', { stage: tt(m[1] === 'integration' ? 'Integration testing' : humanise(m[1])), side: side(m[2]) }), tt('Active weeks for this stage of one application.')];
     if ((m = /^gates\.(\d+)\.(id|name)$/.exec(key))) return [tt('Review gate {n}: {f}', { n: +m[1] + 1, f: tt(FIELD_LABEL[m[2]]) }), ''];
     if ((m = /^gates\.(\d+)\.(os|alt)\.(w|r|s|f)$/.exec(key))) { var g = (state.gates || [])[+m[1]] || {}; return [tt('{gate}: {f} ({side})', { gate: g.name ? tt(g.name) : tt('Review gate {n}', { n: +m[1] + 1 }), f: tt(FIELD_LABEL[m[3]]), side: side(m[2]) }), ''];   }
     if ((m = /^domains\.w\.(\w+)\.(\w+)$/.exec(key))) { var d = (E.DOMAINS || []).filter(function (x) { return x.key === m[1]; })[0], ph = (E.PHASES || []).filter(function (x) { return x.key === m[2]; })[0]; return [tt('{skill}: effort in {phase}', { skill: d ? tt(d.label) : m[1], phase: ph ? tt(ph.label) : m[2] }), tt('Relative weight of this skill area in this phase.')]; }

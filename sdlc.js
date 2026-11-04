@@ -323,6 +323,11 @@
     return { arch: 'Operate', ops: 'Operate', sre: 'Operate', dba: 'Operate', net: 'Operate', qa: 'Deploy', sec: 'Enterprise trust & control', soc: 'Enterprise trust & control', grc: 'Enterprise trust & control', pm: 'Deploy', coach: 'Deploy' }[role] || 'Other';
   }
 
-  var api = { why: why, PHASES: PHASES, FOOTPRINT: FOOTPRINT, WEIGHT: WEIGHT, counts: counts, share: share, impliedOsShare: impliedOsShare, byKey: byKey, phaseOfLayer: phaseOfLayer, phaseOfRole: phaseOfRole };
+  /* Which phase of the capability map a delivery stage or review gate belongs to: design, build and deploy are themselves; integration testing, the test gate and rework are
+   * Validate; the architecture and security reviews are the enterprise's controls. A gate someone adds is a control unless it is called a test. */
+  var STAGE_PHASE = { design: 'Design', build: 'Build', integration: 'Validate', deploy: 'Deploy', test: 'Validate', rework: 'Validate', arch: 'Enterprise trust & control', sec: 'Enterprise trust & control' };
+  function phaseOfStage(key, isGate) { return STAGE_PHASE[key] || (isGate ? 'Enterprise trust & control' : 'Build'); }
+
+  var api = { phaseOfStage: phaseOfStage, STAGE_PHASE: STAGE_PHASE, why: why, PHASES: PHASES, FOOTPRINT: FOOTPRINT, WEIGHT: WEIGHT, counts: counts, share: share, impliedOsShare: impliedOsShare, byKey: byKey, phaseOfLayer: phaseOfLayer, phaseOfRole: phaseOfRole };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.AVASdlc = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

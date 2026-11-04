@@ -30,7 +30,7 @@
     state.gates.forEach(function (g) {
       list.push({ key: g.id, label: g.name, type: 'gate', gate: g });
     });
-    list.push({ key: 'integration', label: 'Integration', type: 'work', dur: num(st.integration[ap]) });
+    list.push({ key: 'integration', label: 'Integration testing', type: 'work', dur: num(st.integration[ap]) });
     list.push({ key: 'deploy', label: 'Deploy', type: 'work', dur: num(st.deploy[ap]) });
     return list;
   }

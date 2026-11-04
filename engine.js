@@ -22,7 +22,7 @@
     { key: 'run', label: 'Run & maintenance' },
     { key: 'platform', label: 'Licences' },
     { key: 'infra', label: 'Infrastructure' },
-    { key: 'ops', label: 'Operations' },
+    { key: 'ops', label: 'Operating people' },
     { key: 'assure', label: 'Security & compliance' },
     { key: 'setup', label: 'Setup (one-off)' }
   ];
@@ -283,21 +283,24 @@
    * E[T] = sum(non-gate stages) + sum_i (w_i + r_i)/s_i + sum_i (1/s_i - 1) * f_i
    */
   function expectedTime(state, ap) {
+    /* Each part has the weeks it takes for a normal-sized application and the share of them (work) that grows with the application's size: the work itself (design, build, fixes),
+     * integration testing, and the time spent testing or reviewing at a gate. What does not grow is waiting (the queue for a review, on each attempt) and releasing, which take
+     * about as long whatever the size. */
     var st = state.stages, parts = [], fixTotal = 0;
     var design = num(st.design[ap]), build = num(st.build[ap]);
-    parts.push({ key: 'design', label: 'Design', weeks: design });
-    parts.push({ key: 'build', label: 'Build', weeks: build });
+    parts.push({ key: 'design', label: 'Design', weeks: design, work: design });
+    parts.push({ key: 'build', label: 'Build', weeks: build, work: build });
     state.gates.forEach(function (g) {
       var p = g[ap], att = 1 / passProb(p);
       fixTotal += (att - 1) * num(p.f);
-      parts.push({ key: g.id, label: g.name, weeks: (num(p.w) + num(p.r)) * att, gate: true });
+      parts.push({ key: g.id, label: g.name, weeks: (num(p.w) + num(p.r)) * att, work: num(p.r) * att, gate: true });
     });
-    parts.push({ key: 'rework', label: 'Rework (fixes)', weeks: fixTotal });
-    parts.push({ key: 'integration', label: 'Integration', weeks: num(st.integration[ap]) });
-    parts.push({ key: 'deploy', label: 'Deploy', weeks: num(st.deploy[ap]) });
-    var total = 0;
-    parts.forEach(function (p) { total += p.weeks; });
-    return { total: total, active: design + build + fixTotal, designBuild: design + build, parts: parts };
+    parts.push({ key: 'rework', label: 'Rework (fixes)', weeks: fixTotal, work: fixTotal });
+    parts.push({ key: 'integration', label: 'Integration testing', weeks: num(st.integration[ap]), work: num(st.integration[ap]) });
+    parts.push({ key: 'deploy', label: 'Deploy', weeks: num(st.deploy[ap]), work: 0 });
+    var total = 0, scalable = 0;
+    parts.forEach(function (p) { total += p.weeks; scalable += p.work; });
+    return { total: total, scalable: scalable, active: design + build + fixTotal, designBuild: design + build, parts: parts };
   }
 
   var round2 = function (x) { return Math.round(x * 100) / 100; };
@@ -708,7 +711,7 @@
         if (p.group !== g.id) return;
         var sc = p.scale * f, ref = T.active * sc, mult = 1, pay = 1;
         if (sk) { mult = 1 + (sk.effort - 1) * (sk.learning > 0 ? Math.max(0, 1 - nth / sk.learning) : 1); pay = sk.pay; }
-        var active = ref * mult, total = T.total + (sc - 1) * T.active + (active - ref), start = free;   // a slower team also pushes go-live back by the extra time
+        var active = ref * mult, total = T.total + (sc - 1) * T.scalable + (active - ref), start = free;   // a slower team also pushes go-live back by the extra time
         free = start + active; nth++;
         apps.push({ index: i, name: p.name, scale: sc, devs: p.devs, build: p.build, group: p.group, value: p.value, annualIncluded: annualOf(state, p.value), lane: 0,
           start: start, active: active, activeRef: ref, pay: pay, skillMult: mult, designBuild: T.designBuild * sc * mult, activeEnd: start + active, goLive: start + total });
@@ -1336,8 +1339,116 @@
     return slope < -1e-12 ? p0 - a0 / slope : null;
   }
 
+
+  /* ---- Cost by phase of the capability map ----
+   * Every cost belongs to a phase, so the phase view adds up to the cost totals. Each cost category's total over the analysis period (the model's own figure) is shared
+   * between phases in proportion to the lines behind it: the delivery team by its effort per phase, tooling and security by each line's phase, operating people by their role's phase,
+   * and the rest by where the work happens (platform, cloud and operating people in Operate; looking after the applications in Evolve; setup in Deploy; AI tokens in Build until go-live, then Operate). */
+  function linePhase(it, kind) {
+    var D = sdlcMap(); if (!D) return 'Operate';
+    var k = it.phase && D.byKey(it.phase) ? it.phase : (kind === 'ops' ? D.phaseOfRole(it.role) : D.phaseOfLayer(it.name));
+    return D.byKey(k) ? k : 'Operate';   // a line the map cannot place is counted where things are run
+  }
+  function costByPhaseCore(state, r) {
+    var s = r.eff || state, dom = domainBreakdown(s, r), out = {}, DK = { ideate: 'Ideate', design: 'Design', build: 'Build', validate: 'Validate', deploy: 'Deploy' };
+    var h = num(s.team.hours), TRUST = 'Enterprise trust & control';
+    ['alt', 'os'].forEach(function (ap) {
+      var res = r[ap], sc = res.sumCost, ph = {}, total = 0;
+      var entry = function (p) { return ph[p] || (ph[p] = { total: 0, cats: {}, eff: {}, effort: 0, fte: 0 }); };
+      var addEff = function (p, cat, d) { if (!(d > 0)) return; var x = entry(p); x.eff[cat] = (x.eff[cat] || 0) + d; x.effort += d; };   // person-days of work: only the costs that are people have them
+      var add = function (p, cat, amt) { if (!(amt > 0)) return; var x = entry(p); x.total += amt; x.cats[cat] = (x.cats[cat] || 0) + amt; total += amt; };
+      var spread = function (cat, T, w, fb) {
+        if (!(T > 0)) return;
+        var S = 0, k; for (k in w) S += w[k];
+        if (!(S > 0)) { add(fb, cat, T); return; }
+        for (k in w) add(k, cat, T * w[k] / S);
+      };
+      var bump = function (w, p, v) { if (v > 0) w[p] = (w[p] || 0) + v; };
+      var teamDays = 0;
+      Object.keys(dom.phases).forEach(function (k) { var x = dom.phases[k][ap]; addEff(DK[k], 'team', x.days); add(DK[k], 'team', x.cost); teamDays += x.days; });
+      var tokPer = num(s.tokens.spend) * (ap === 'os' ? 1 - clamp(num(s.tokens.saving), 0, 100) / 100 : 1), tokBuild = 0;
+      res.projects.forEach(function (p) { if (p.start < res.W) tokBuild += tokPer * p.scale; });
+      add('Build', 'tokens', Math.min(sc.tokens, tokBuild)); add('Operate', 'tokens', Math.max(0, sc.tokens - tokBuild));
+      add('Evolve', 'run', sc.run);   // looking after the live applications (break/fix and enhancements) is Evolve
+      if (teamDays > 0) addEff('Evolve', 'run', sc.run / (sc.team / teamDays));   // at what the delivery team costs a day
+      var wl = {};
+      if (hasItems(s.toolItems)) s.toolItems.forEach(function (it) { bump(wl, linePhase(it, 'tool'), num(it.annual) * (ap === 'os' ? osShare(it) : 1)); });
+      else bump(wl, 'Operate', ap === 'alt' ? num(s.platform.alt) : num(s.osTooling));
+      if (ap === 'os') bump(wl, 'Operate', num(s.platform.os) + sentryUplift(s) + externalAnnual(s));
+      spread('platform', sc.platform, wl, 'Operate');
+      add('Operate', 'infra', sc.infra);
+      var wo = {}, wf = {};
+      if (hasItems(s.opsItems)) s.opsItems.forEach(function (it) {
+        var p = linePhase(it, 'ops'), f = num(it.fte) * (ap === 'os' ? osShare(it) : 1);
+        bump(wo, p, f * h * num(s.rates[it.role] !== undefined ? s.rates[it.role] : s.rates.ops)); bump(wf, p, f);
+      });
+      else { bump(wo, 'Operate', num(s.opsFte[ap]) * h * num(s.rates.ops)); bump(wf, 'Operate', num(s.opsFte[ap])); }
+      spread('ops', sc.ops, wo, 'Operate');
+      var oAnnual = 0, k2; for (k2 in wo) oAnnual += wo[k2] * WPY;
+      if (sc.ops > 0 && oAnnual > 0) for (k2 in wf) { var e = entry(k2); e.fte = wf[k2]; addEff(k2, 'ops', wf[k2] * h * WPY / 8 * (sc.ops / oAnnual)); }
+      var wa = {};
+      bump(wa, TRUST, highAssureAnnual(s, ap));
+      (s.appAssure || []).forEach(function (it) { bump(wa, it.phase && sdlcMap().byKey(it.phase) ? it.phase : TRUST, num(it.annual) * (ap === 'os' ? osShare(it) : 1)); });
+      spread('assure', sc.assure, wa, TRUST);
+      var waAll = 0, kA; for (kA in wa) waAll += wa[kA];
+      if (sc.assure > 0 && waAll > 0 && assuranceOn(s) && !(ap === 'os' && hostingOf(s) !== 'self')) (s.assureItems || []).forEach(function (it) {   // the people among the security items have days; certification and tools are money only
+        if (it.kind === 'people') addEff(TRUST, 'assure', num(it.fte) * h * WPY / 8 * (ap === 'os' ? osShare(it) : 1) * sc.assure / waAll);
+      });
+      add('Deploy', 'setup', sc.setup);
+      out[ap] = { phases: ph, total: total };
+    });
+    return out;
+  }
+
+  /* A typical application: how big it is is its build time with OutSystems, in months (the same measure as an application on the Applications tab). Its scale is the number of
+   * OutSystems weeks of active work over a normal application's, and the alternative is given the same scale, so it takes longer. Work (design, build, fixes, integration testing and the testing or review at gates) scales
+   * with size; waiting in queues and releasing do not (as for every application). */
+  function typicalScale(state, months) { var T = expectedTime(state, 'os'); return T.active > 0 ? num(months) * (WPY / 12) / T.active : 1; }
+  function typicalTime(state, ap, months) {
+    var T = expectedTime(state, ap), sc = typicalScale(state, months), total = 0;
+    var parts = T.parts.map(function (p) { var w = (p.weeks - p.work) + p.work * sc; total += w; return { key: p.key, label: p.label, weeks: w, fixed: p.weeks - p.work, gate: p.gate }; });
+    return { total: total, active: T.active * sc, parts: parts, scale: sc };
+  }
+  /* Cost by phase for the whole portfolio (no months), or for getting one typical application of that many months into production. Running the platform, tooling, cloud, operating people
+   * and looking after live applications are shared between applications, so they belong to the portfolio; one application's cost is what it takes to deliver it: its delivery team and
+   * AI build tokens (scaled from the average application to its size) and its share of the per-application security work (penetration testing, accreditation: one year's amount). */
+  function costByPhase(state, r, months) {
+    var base = costByPhaseCore(state, r);
+    if (!(num(months) > 0)) return base;
+    var s = r.eff || state, sc = typicalScale(s, months), TRUST = 'Enterprise trust & control', out = {};
+    ['alt', 'os'].forEach(function (ap) {
+      var projs = r[ap].projects, n = Math.max(1, projs.length), avg = 0, ph = {}, total = 0;
+      projs.forEach(function (p) { avg += p.scale; }); avg = projs.length && avg > 0 ? avg / projs.length : 1;
+      var k = sc / avg, entry = function (p) { return ph[p] || (ph[p] = { total: 0, cats: {}, eff: {}, effort: 0, fte: 0 }); };
+      Object.keys(base[ap].phases).forEach(function (p) {
+        var x = base[ap].phases[p];
+        if (x.cats.team > 0) { entry(p).cats.team = x.cats.team * k / n; }
+        if (p === 'Build' && x.cats.tokens > 0) entry(p).cats.tokens = x.cats.tokens * k / n;   // the tokens used to build, not those used after go-live
+        if (x.eff.team > 0) { var e = entry(p); e.eff.team = x.eff.team * k / n; e.effort += e.eff.team; }
+      });
+      (s.appAssure || []).forEach(function (it) {
+        var amt = num(it.annual) * (ap === 'os' ? osShare(it) : 1) / n, p = it.phase && sdlcMap().byKey(it.phase) ? it.phase : TRUST;
+        if (amt > 0) entry(p).cats.assure = (entry(p).cats.assure || 0) + amt;
+      });
+      Object.keys(ph).forEach(function (p) { var t = 0; Object.keys(ph[p].cats).forEach(function (c) { t += ph[p].cats[c]; }); ph[p].total = t; total += t; });
+      out[ap] = { phases: ph, total: total };
+    });
+    return out;
+  }
+
+  /* The inputs behind each kind of cost, as the Cost by phase editor lists them (the delivery team's inputs are the applications, delivery times and rates). A test changes each of
+   * them and checks that the cost it is listed under moves, so the editor never offers an input that does nothing to its row. */
+  var CAT_INPUTS = {
+    tokens: ['tokens.spend', 'tokens.saving', 'tokens.runPct'],
+    run: ['maint.fix.alt', 'maint.fix.os', 'maint.enh.alt', 'maint.enh.os'],
+    platform: ['platform.os', 'platform.sentry', 'platform.alt', 'osTooling'],
+    infra: ['infraItems.0.annual', 'infraItems.0.os', 'infra.alt', 'infra.os'],
+    assure: ['assureItems.0.annual', 'assureItems.0.os', 'appAssure.0.annual', 'appAssure.0.os'],
+    setup: ['setup.alt.hiring', 'setup.alt.build', 'setup.alt.tools', 'setup.os.paas', 'setup.os.self']
+  };
+
   var api = {
-    WPY: WPY, sensitivity: sensitivity, mustBeTrue: mustBeTrue, breakEvenLicence: breakEvenLicence, roleBreakdown: roleBreakdown, domainBreakdown: domainBreakdown, hostingCompare: hostingCompare, assureAnnual: assureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, assuranceOn: assuranceOn, hostingOf: hostingOf, sentryUplift: sentryUplift, CASES: CASES, casesOf: casesOf, caseOf: caseOf, caseTable: caseTable, effectiveState: effectiveState, DOMAINS: DOMAINS, PHASES: PHASES, domainDefaults: domainDefaults, DRIVERS: DRIVERS, COST_CATS: COST_CATS,
+    WPY: WPY, CAT_INPUTS: CAT_INPUTS, costByPhase: costByPhase, typicalTime: typicalTime, typicalScale: typicalScale, linePhase: linePhase, sensitivity: sensitivity, mustBeTrue: mustBeTrue, breakEvenLicence: breakEvenLicence, roleBreakdown: roleBreakdown, domainBreakdown: domainBreakdown, hostingCompare: hostingCompare, assureAnnual: assureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, assuranceOn: assuranceOn, hostingOf: hostingOf, sentryUplift: sentryUplift, CASES: CASES, casesOf: casesOf, caseOf: caseOf, caseTable: caseTable, effectiveState: effectiveState, DOMAINS: DOMAINS, PHASES: PHASES, domainDefaults: domainDefaults, DRIVERS: DRIVERS, COST_CATS: COST_CATS,
     defaultState: defaultState, passProb: passProb, ROLES: ROLES, ALL_ROLES: ALL_ROLES, mixCost: mixCost, peoplePerDev: peoplePerDev, devsFor: devsFor, weekCost: weekCost,
     sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
     expandBreakdown: expandBreakdown, collapseBreakdown: collapseBreakdown, expectedTime: expectedTime,

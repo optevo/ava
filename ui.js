@@ -402,7 +402,7 @@
     var cards = card('Stages (weeks)', pairHead() +
       pairRow('Design', sp('stages.design'), 0.5, 0, undefined, scope) +
       pairRow('Build', sp('stages.build'), 0.5, 0, undefined, scope) +
-      pairRow('Integration', sp('stages.integration'), 0.5, 0, undefined, scope) +
+      pairRow('Integration testing', sp('stages.integration'), 0.5, 0, undefined, scope) +
       pairRow('Deploy', sp('stages.deploy'), 0.5, 0, undefined, scope) +
       '<div class="note">Build is fast for everyone now. The difference is in what happens after it.</div>');
     DEFAULTS.gates.forEach(function (gate, i) {
@@ -475,20 +475,24 @@
     return '<p><button class="b" data-act="item-add" data-list="' + listKey + '">Add line</button> <button class="b" data-act="bd-collapse" data-key="' + key + '">Back to a single total</button></p>';
   }
   /* Tooling or infrastructure: one amount per line for the alternative, and the share still needed with OutSystems. */
+  function phaseSel(path, cur) {
+    return '<select data-phasepath="' + path + '"' + C.tip(tt('Phase'), tt('The phase of the software lifecycle this line belongs to. It places the cost in that phase on Phase by phase, and sets the share still needed with OutSystems from the capability map.')) + '>' +
+      D.PHASES.map(function (ph) { return '<option value="' + esc(ph.key) + '"' + (ph.key === cur ? ' selected' : '') + '>' + esc(tt(ph.key)) + '</option>'; }).join('') + '</select>';
+  }
   function bdSimple(key, listKey, title, intro, items, nameHead) {
     var cur = state.currency;
     if (!items || !items.length) {
       return card(title, '<div class="note" style="margin:0 0 8px">' + intro + '</div><p>' + tt('Alternative: {a} a year · OutSystems: {o} a year', { a: '<b id="bd-' + key + '-t0"></b>', o: '<b id="bd-' + key + '-ot0"></b>' }) + '</p>' +
         '<p><button class="b pri" data-act="bd-expand" data-key="' + key + '">Break down</button></p>');
     }
-    var infra = key === 'infra', tc = infra ? 't6' : 't5';
-    var rows = '<div class="bd ' + tc + '"><span class="th">' + nameHead + '</span><span class="th r">' + tt('Alternative, {c} a year', { c: esc(curSym()) }) + '</span><span class="th r">' + tt('Still needed with OutSystems %') + '</span>' + (infra ? '<span class="th r"' + C.tip('Also with ODC', 'Tick the services the organisation still needs from outside OutSystems whatever the hosting, such as an enterprise identity provider or an APM tool it runs anyway. They then cost the same on both sides, even with ODC managed by OutSystems.') + '>Also with ODC</span>' : '') + '<span class="th r">' + tt('OutSystems, {c} a year', { c: esc(curSym()) }) + '</span><span></span></div>';
+    var infra = key === 'infra', tools = listKey === 'toolItems', tc = infra ? 't6' : tools ? 't5p' : 't5';
+    var rows = '<div class="bd ' + tc + '"><span class="th">' + nameHead + '</span>' + (tools ? '<span class="th"' + C.tip(tt('Phase'), tt('The phase of the software lifecycle this line belongs to. It places the cost in that phase on Phase by phase, and sets the share still needed with OutSystems from the capability map.')) + '>' + tt('Phase') + '</span>' : '') + '<span class="th r">' + tt('Alternative, {c} a year', { c: esc(curSym()) }) + '</span><span class="th r">' + tt('Still needed with OutSystems %') + '</span>' + (infra ? '<span class="th r"' + C.tip('Also with ODC', 'Tick the services the organisation still needs from outside OutSystems whatever the hosting, such as an enterprise identity provider or an APM tool it runs anyway. They then cost the same on both sides, even with ODC managed by OutSystems.') + '>Also with ODC</span>' : '') + '<span class="th r">' + tt('OutSystems, {c} a year', { c: esc(curSym()) }) + '</span><span></span></div>';
     items.forEach(function (it, i) {
-      rows += '<div class="bd ' + tc + '"><input type="text" data-tpath="' + listKey + '.' + i + '.name" value="' + esc(it.name) + '">' + inp(listKey + '.' + i + '.annual', 1000, 0) + (listKey === 'toolItems' ? shareInp(listKey, i) : pctInp(listKey + '.' + i + '.os')) +
+      rows += '<div class="bd ' + tc + '"><input type="text" data-tpath="' + listKey + '.' + i + '.name" value="' + esc(it.name) + '">' + (tools ? phaseSel(listKey + '.' + i + '.phase', E.linePhase(it, 'tool')) : '') + inp(listKey + '.' + i + '.annual', 1000, 0) + (listKey === 'toolItems' ? shareInp(listKey, i) : pctInp(listKey + '.' + i + '.os')) +
         (infra ? '<span style="text-align:center"><input type="checkbox" data-ext="' + i + '"' + (it.ext ? ' checked' : '') + '></span>' : '') +
         '<span class="ro" id="bd-' + key + '-oc' + i + '"></span><button class="b" data-act="item-del" data-list="' + listKey + '" data-i="' + i + '" title="Remove this line">×</button></div>';
     });
-    rows += '<div class="bd ' + tc + '"><span class="tot" style="text-align:left">Total</span><span class="tot" id="bd-' + key + '-t"></span><span></span>' + (infra ? '<span></span>' : '') + '<span class="tot" id="bd-' + key + '-ot"></span><span></span></div>';
+    rows += '<div class="bd ' + tc + '"><span class="tot" style="text-align:left">Total</span>' + (tools ? '<span></span>' : '') + '<span class="tot" id="bd-' + key + '-t"></span><span></span>' + (infra ? '<span></span>' : '') + '<span class="tot" id="bd-' + key + '-ot"></span><span></span></div>';
     return card(title, '<div class="note" style="margin:0 0 8px">' + intro + '</div><div class="appwrap">' + rows + '</div>' + bdButtons(key, listKey));
   }
   /* Operating people: FTE for the alternative by role, and the share still needed with OutSystems. */
@@ -760,24 +764,23 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     };
   }
   /* The delivery-clock stages each SDLC phase adds weeks to, and where those times are edited. Phases before an application starts or after it is live have none. */
-  var PHASE_TIME = { Design: [['design'], 'stages.design.'], Build: [['build'], 'stages.build.'], Validate: [null, null], Deploy: [['integration', 'deploy'], null] };
-  function phaseWeeks(phase, ap) {
-    var T = E.expectedTime(state, ap), keys = PHASE_TIME[phase.key];
-    if (!keys) return null;
+  var PHASE_TIME = { Design: 'stages.design.', Build: 'stages.build.', Validate: null, Deploy: 'stages.deploy.', 'Enterprise trust & control': null };   // phases that sit on the delivery clock, and where their weeks are changed
+  function phaseWeeks(phase, ap) {   // each stage and review gate belongs to one phase (see AVASdlc.phaseOfStage)
+    if (!(phase.key in PHASE_TIME)) return null;
     var w = 0;
-    T.parts.forEach(function (pt) { if (phase.key === 'Validate' ? (pt.gate || pt.key === 'rework') : keys[0].indexOf(pt.key) >= 0) w += pt.weeks; });
+    E.typicalTime(state, ap, typicalMonths).parts.forEach(function (pt) { if (D.phaseOfStage(pt.key, pt.gate) === phase.key) w += pt.weeks; });
     return w;
   }
-  function phaseGo(phase, ap) {
-    if (phase.key === 'Validate') return 'delivery';
-    if (phase.key === 'Deploy') return 'delivery#stages.integration.' + ap + ',stages.deploy.' + ap;
-    return 'delivery#' + PHASE_TIME[phase.key][1] + ap;
+  function phaseWait(phase, ap) {   // the part of a phase's weeks that does not grow with the application: waiting in queues, and releasing
+    var w = 0; E.typicalTime(state, ap, typicalMonths).parts.forEach(function (pt) { if (D.phaseOfStage(pt.key, pt.gate) === phase.key) w += pt.fixed; });
+    return w;
   }
+  function phaseGo(phase, ap) { return PHASE_TIME[phase.key] ? 'delivery#' + PHASE_TIME[phase.key] + ap : 'delivery'; }
   /* One single-colour bar per phase and approach: its length is the typical weeks the phase adds to the time to production. */
   function timeBar(phase, ap, maxW) {
     var who = ap === 'alt' ? altLabel() : 'OutSystems', w = phaseWeeks(phase, ap);
     if (w === null) return '<span class="tm none"' + C.tip(phase.key + ' · ' + tt(who), tt('This phase is not on the delivery clock: it happens before an application starts or after it is live, so it adds no weeks to the time to production.')) + '>' + tt('not timed') + '</span>';
-    return '<span class="tm" data-go="' + phaseGo(phase, ap) + '"' + C.tip(phase.key + ' · ' + tt(who), tt('About {n} weeks per application in this phase, including waits for review and fixes. Click to change the times.', { n: f1(w) })) +
+    return '<span class="tm" data-go="' + phaseGo(phase, ap) + '"' + C.tip(phase.key + ' · ' + tt(who), tt('About {n} weeks per application in this phase, including waits for review and fixes. Click to change the times.', { n: f1(w) }) + (phaseWait(phase, ap) > 0.05 ? '\n\n' + tt('Of this, {n} weeks is waiting (review queues) or releasing, which takes about as long whatever the size of the application. The rest is work, and grows with size.', { n: f1(phaseWait(phase, ap)) }) : '')) +
       '><i style="width:' + Math.max(2, w / Math.max(1e-9, maxW) * 100).toFixed(1) + '%;background:var(--' + (ap === 'alt' ? 'alt' : 'os') + ')"></i><b>' + tt('{n} wk', { n: f1(w) }) + '</b></span>';
   }
   /* One row per capability of a phase, the two approaches side by side, each rated and explained in a tooltip. */
@@ -795,7 +798,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var map = {}, self = E.hostingOf(state) === 'self', osS = function (it) { var x = parseFloat(it.os); return isFinite(x) ? Math.min(1, Math.max(0, x)) : 1; };
     function get(ph) { return map[ph] = map[ph] || { a: 0, o: 0, ta: 0, to: 0, sa: 0, so: 0, pa: 0, po: 0, fa: 0, fo: 0, ti: [], ai: [], pi: [], roles: {} }; }
     (state.toolItems || []).forEach(function (it, i) {
-      var x = get(D.phaseOfLayer(it.name)), a = Number(it.annual), o = a * osS(it);
+      var x = get(E.linePhase(it, 'tool')), a = Number(it.annual), o = a * osS(it);
       x.a += a; x.o += o; x.ta += a; x.to += o; x.ti.push(i);
     });
     (state.appAssure || []).forEach(function (it, i) {   // penetration testing and accreditation: always needed, on both sides
@@ -803,7 +806,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       x.a += a; x.o += o; x.sa += a; x.so += o; x.ai.push(i);
     });
     (state.opsItems || []).forEach(function (it, i) {
-      var x = get(D.phaseOfRole(it.role)), per = Number(state.team.hours) * 52 * (state.rates[it.role] !== undefined ? state.rates[it.role] : state.rates.ops);
+      var x = get(E.linePhase(it, 'ops')), per = Number(state.team.hours) * 52 * (state.rates[it.role] !== undefined ? state.rates[it.role] : state.rates.ops);
       var a = Number(it.fte) * per, o = Number(it.fte) * osS(it) * per, keep = hostAware && !self ? 0 : 1;
       x.a += a; x.o += o * keep; x.pa += a; x.po += o * keep; x.fa += Number(it.fte); x.fo += Number(it.fte) * osS(it) * keep; x.pi.push(i);
       x.roles[state.rates[it.role] !== undefined ? it.role : 'ops'] = 1;
@@ -811,53 +814,85 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     return map;
   }
   /* The resources a phase needs over the analysis period, for one approach: the delivery team's effort, AI tokens, and the tooling and operating people that run it. */
-  var sdlcView = 'time';
   var DELIVERY_PHASE = { Ideate: 'ideate', Design: 'design', Build: 'build', Validate: 'validate', Deploy: 'deploy' };
-  function phaseResources(ph, ap, runMap, dom) {
-    var yrs = Math.max(1, Number(state.horizon) || 1), dk = DELIVERY_PHASE[ph.key], d = dk && dom.phases[dk] ? dom.phases[dk][ap] : { days: 0, cost: 0 };
-    var x = runMap[ph.key] || { ta: 0, to: 0, sa: 0, so: 0, pa: 0, po: 0, fa: 0, fo: 0, ti: [], ai: [], pi: [], roles: {} }, os = ap === 'os';
-    var r = { days: d.days, team: d.cost, tokens: ph.key === 'Build' ? res[ap].sumCost.tokens : 0, tools: ((os ? x.to : x.ta) + (os ? x.so : x.sa)) * yrs, people: (os ? x.po : x.pa) * yrs, fte: os ? x.fo : x.fa, toolsYr: os ? x.to : x.ta, secYr: os ? x.so : x.sa, x: x };
-    r.total = r.team + r.tokens + r.tools + r.people;
-    return r;
+  function phaseResources(ph, ap, cp) {   // everything the model costs, shared out by phase (E.costByPhase), so the phases add up to the cost totals
+    var x = cp[ap].phases[ph.key] || { total: 0, cats: {}, eff: {}, effort: 0, fte: 0 };
+    return { eff: x.eff, effort: x.effort, fte: x.fte, cats: x.cats, total: x.total };
   }
-  function resBar(ph, ap, maxR, runMap, dom) {
-    var r = phaseResources(ph, ap, runMap, dom), M = C.moneyShort, who = ap === 'alt' ? altLabel() : 'OutSystems', yrs = Math.max(1, Number(state.horizon) || 1);
-    if (r.total < 1) return '<span class="tm none"' + C.tip(ph.key + ' · ' + tt(who), tt('No separate people or tooling are modelled for this phase with this approach: it is included, or not costed.')) + '>' + tt('nothing extra') + '</span>';
-    var lines = [];
-    if (r.team) lines.push(tt('Delivery team') + ': ' + M(r.team));
-    if (r.tokens) lines.push(tt('AI tokens') + ': ' + M(r.tokens));
-    if (r.people) lines.push(tt('Operating people') + ': ' + M(r.people));
-    if (r.tools) lines.push(tt('Tooling') + ': ' + M(r.tools));
-    var tip = C.tip(ph.key + ' · ' + tt(who), tt('About {amt} over {n} years. Click a figure underneath to change what is behind it.', { amt: M(r.total), n: yrs }) + '\n\n' + lines.join('\n'));
-    var link = function (txt, go) { return '<a class="more" data-go="' + go + '">' + txt + '</a>'; }, subs = [];
-    if (r.days) subs.push(link(tt('{n} person-days', { n: Math.round(r.days).toLocaleString() }), 'team/phases'));
-    if (r.tokens) subs.push(link(tt('AI tokens'), 'costs#tokens.spend,tokens.saving'));
-    if (r.fte) subs.push(link(tt('{n} FTE', { n: f1(r.fte) }), 'infrastructure/people#' + r.x.pi.map(function (i) { return 'opsItems.' + i + '.fte'; }).join(',')));
-    if (r.secYr) subs.push(link(tt('{amt} a year in security work', { amt: M(r.secYr) }), 'infrastructure/security#' + r.x.ai.map(function (i) { return 'appAssure.' + i + '.annual'; }).join(',')));
-    if (r.toolsYr) subs.push(link(tt('{amt} a year in tooling', { amt: M(r.toolsYr) }), 'infrastructure/cloud#' + r.x.ti.map(function (i) { return 'toolItems.' + i + '.annual'; }).join(',')));
-    return '<span class="tm"' + tip + '><i style="width:' + Math.max(2, r.total / Math.max(1, maxR) * 100).toFixed(1) + '%;background:var(--' + (ap === 'alt' ? 'alt' : 'os') + ')"></i><b>' + M(r.total) + '</b></span>' +
-      '<div class="rsub">' + subs.join(' · ') + '</div>';
+  /* Phase by phase has two scopes, each with a Time and a Cost view:
+   *   Typical application: Time = the weeks each phase adds to one application; Cost = the average cost of one application (the portfolio's cost in the phase divided by the applications).
+   *   Over X years:        Time = the person-days of work (delivery team and operating people); Cost = every cost, in the phase it belongs to. */
+  var sdlcScope = 'app', sdlcMeasure = 'time', typicalMonths = 1;   // the typical application is this many months of OutSystems build
+  var RES_CATS = [['team', 'Delivery team'], ['tokens', 'AI tokens'], ['run', 'Run & maintenance'], ['platform', 'Licences and tooling'], ['infra', 'Infrastructure'], ['ops', 'Operating people'], ['assure', 'Security and compliance'], ['setup', 'Setup (one-off)']];
+  function sdlcCp() { return E.costByPhase(state, res, sdlcScope === 'app' ? typicalMonths : 0); }   // the cost of every phase for the scope in view
+  function monthsText(n) { return n === 1 ? tt('{n} month', { n: n }) : tt('{n} months', { n: n }); }
+  function sdlcValue(ph, ap, cp) {   // the number a bar shows; null when the phase is not on the delivery clock
+    if (sdlcScope === 'app' && sdlcMeasure === 'time') return phaseWeeks(ph, ap);
+    var r = phaseResources(ph, ap, cp);
+    return sdlcMeasure === 'effort' ? r.effort : r.total;
   }
-  /* The table at the top of the coverage card, for the chosen view: the time each phase adds, or the resources it needs. Rebuilt when the model changes. */
+  function sdlcText(v) { return sdlcMeasure === 'time' ? tt('{n} wk', { n: f1(v) }) : sdlcMeasure === 'effort' ? Math.round(v).toLocaleString() : C.moneyShort(v); }
+  function resBar(ph, ap, maxR, cp) {
+    var r = phaseResources(ph, ap, cp), M = C.moneyShort, who = ap === 'alt' ? altLabel() : 'OutSystems', yrs = Math.max(1, Number(state.horizon) || 1), days = sdlcMeasure === 'effort', v = sdlcValue(ph, ap, cp);
+    if (v < (days ? 0.5 : 1) && sdlcScope === 'app' && (ph.key === 'Operate' || ph.key === 'Evolve')) return '<span class="tm none"' + C.tip(ph.key + ' · ' + tt(who), tt('Running the platform and looking after live applications are shared between applications, so they belong to the whole portfolio: see Over X years.')) + '>' + tt('shared') + '</span>';
+    if (v < (days ? 0.5 : 1)) return '<span class="tm none"' + C.tip(ph.key + ' · ' + tt(who), days ? tt('No person-days are modelled for this phase with this approach. Tooling and AI tokens are money only: switch to Cost to see them.') : tt('Nothing is costed in this phase with this approach.')) + '>' + (days ? tt('no person-days') : tt('nothing extra')) + '</span>';
+    var pd = function (n) { return tt('{n} person-days', { n: Math.round(n).toLocaleString() }); }, lines = [];
+    RES_CATS.forEach(function (c) {
+      var amt = r.cats[c[0]] || 0, d = r.eff[c[0]] || 0;
+      if (days ? !(d >= 0.5) : !(amt > 0)) return;
+      var extra = c[0] === 'ops' ? tt('{n} FTE', { n: f1(r.fte) }) + ' · ' : '';
+      lines.push(tt(c[1]) + ': ' + (days ? extra + pd(d) : (d >= 0.5 ? pd(d) + ' · ' : '') + M(amt)));
+    });
+    var one = sdlcScope === 'app', head = days ? (one ? tt('About {n} person-days of work to reach production.', { n: Math.round(v).toLocaleString() }) : tt('About {n} person-days of work over {yrs} years.', { n: Math.round(v).toLocaleString(), yrs: yrs }))
+      : one ? tt('About {amt} to reach production, from the costs listed below.', { amt: M(v) }) : tt('About {amt} over {yrs} years, from every cost listed below.', { amt: M(v), yrs: yrs });
+    var tip = C.tip(ph.key + ' · ' + tt(who), head + '\n\n' + lines.join('\n') + (days ? '\n\n' + tt('Licences, tooling, cloud and AI tokens are money only: see Cost.') : '') + '\n\n' + tt('Change the figures in Cost by phase below.'));
+    return '<span class="tm"' + tip + '><i style="width:' + Math.max(2, v / Math.max(1e-9, maxR) * 100).toFixed(1) + '%;background:var(--' + (ap === 'alt' ? 'alt' : 'os') + ')"></i><b>' + sdlcText(v) + '</b></span>';
+  }
   function sdlcInner() {
-    var res_ = sdlcView === 'res', rows = '<tr><th style="text-align:left">Phase</th><th>' + esc(altLabel()) + '</th><th>OutSystems</th></tr>', maxW = 0, runMap = res_ ? sdlcRunMap(true) : null, dom = res_ ? E.domainBreakdown(state, res) : null;
+    if (sdlcScope === 'port' && sdlcMeasure === 'time') sdlcMeasure = 'effort';   // elapsed weeks are only meaningful for one application
+    var timed = sdlcScope === 'app' && sdlcMeasure === 'time', yrs = Math.max(1, Number(state.horizon) || 1);
+    var rows = '<tr><th style="text-align:left">Phase</th><th>' + esc(altLabel()) + '</th><th>OutSystems</th></tr>', maxW = 0, cp = timed ? null : sdlcCp(), tot = { alt: 0, os: 0 };
     D.PHASES.forEach(function (ph) {
       ['alt', 'os'].forEach(function (ap) {
-        var w = res_ ? phaseResources(ph, ap, runMap, dom).total : phaseWeeks(ph, ap);
-        if (w !== null && w > maxW) maxW = w;
+        var w = sdlcValue(ph, ap, cp);
+        if (w !== null) { tot[ap] += w; if (w > maxW) maxW = w; }   // the phases add up to the headline: the time to production of one application, or the total over the period
       });
     });
     D.PHASES.forEach(function (ph) {
       var open = !!sdlcOpen[ph.key], idx = D.PHASES.indexOf(ph);
       rows += '<tr class="phr' + (open ? ' open' : '') + '" data-sdlc="' + esc(ph.key) + '"><td><span class="car">' + (open ? '▾' : '▸') + '</span> ' + esc(ph.key) + ' <i class="cnt">' + ph.caps.length + '</i></td><td>' +
-        (res_ ? resBar(ph, 'alt', maxW, runMap, dom) : timeBar(ph, 'alt', maxW)) + '</td><td>' + (res_ ? resBar(ph, 'os', maxW, runMap, dom) : timeBar(ph, 'os', maxW)) + '</td></tr>' +
+        (timed ? timeBar(ph, 'alt', maxW) : resBar(ph, 'alt', maxW, cp)) + '</td><td>' + (timed ? timeBar(ph, 'os', maxW) : resBar(ph, 'os', maxW, cp)) + '</td></tr>' +
         '<tr class="phd" data-sdlcd="' + esc(ph.key) + '"' + (open ? '' : ' hidden') + '><td colspan="3">' +
         '<div class="phs"><b>' + esc(altLabel()) + '</b> ' + phaseStory()['p' + idx + '_ai'] + '</div><div class="phs"><b>OutSystems</b> ' + phaseStory()['p' + idx + '_os'] + '</div>' + capTable(ph) + '</td></tr>';
     });
-    return '<div class="steps sdlcview"><button class="st' + (res_ ? '' : ' on') + '" data-sdlcview="time">' + tt('Time') + '</button><button class="st' + (res_ ? ' on' : '') + '" data-sdlcview="res">' + tt('Resources') + '</button></div>' +
-      '<div class="note" style="margin:0 0 6px">' + (res_
-        ? tt('The people and tooling each phase needs over the analysis period, for each approach: the delivery team, AI tokens, and the operating people and tools that run it. Click a figure under a bar to change what is behind it; click a phase to see the capabilities that explain the difference.')
-        : tt('The typical time each phase adds to an application, for each approach. Click a bar to change the times behind it; click a phase to see the capabilities that explain the difference, and which are native, assisted or external for each approach.')) + '</div>' +
+    rows += '<tr class="tot"><td>' + tt('Total') + '</td><td><b>' + sdlcText(tot.alt) + '</b></td><td><b>' + sdlcText(tot.os) + '</b></td></tr>';
+    var btn = function (attr, val, on, label) { return '<button class="st' + (on ? ' on' : '') + '" data-' + attr + '="' + val + '">' + label + '</button>'; };
+    var heads = { 'app/time': tt('Typical application: the weeks each phase adds to time to production'),
+      'app/cost': tt('Typical application: its cost to reach production, by phase'),
+      'app/effort': tt('Typical application: the person-days of work to reach production, by phase'),
+      'port/effort': tt('Over {yrs} years: the person-days of work in each phase', { yrs: yrs }),
+      'port/cost': tt('Whole portfolio: every cost over {yrs} years, by the phase it belongs to', { yrs: yrs }) };
+    var notes = { 'app/time': tt('The typical time each phase adds to an application, for each approach. Click a bar to change the times behind it; click a phase to see the capabilities that explain the difference, and which are native, assisted or external for each approach.'),
+      'app/cost': tt('What it costs to get one typical application into production, in each phase: its delivery team and AI build tokens, scaled to its size, and its share of the per-application security work (penetration testing, accreditation). Running costs are shared between applications, so they are under Over X years. Hover a bar to see what it is made of; click a phase to see the capabilities that explain the difference.'),
+      'app/effort': tt('The work to get one typical application into production, in person-days: its delivery team. Running and looking after applications are shared, so they are under Over X years. Click a phase to see the capabilities that explain the difference.'),
+      'port/effort': tt('The work each phase needs, in person-days: the delivery team, looking after the applications, the operating people who run them, and the people who provide security. Licences, tooling, cloud and AI tokens are money only, so they appear under Cost. Click a phase to see the capabilities that explain the difference.'),
+      'port/cost': tt('Every cost of each approach over the analysis period, placed in the phase it belongs to, so the phases add up to the total cost: building (delivery team, AI tokens), running (platform, tooling, cloud, operating people, security) and looking after the applications. Hover a bar to see what it is made of; click a phase to see the capabilities that explain the difference.') };
+    var mbtn = function (val, label, tip) { return '<button class="st' + (sdlcMeasure === val ? ' on' : '') + '" data-sdlcmeasure="' + val + '"' + C.tip(tt(label), tt(tip)) + '>' + tt(label) + '</button>'; };
+    var key = sdlcScope + '/' + sdlcMeasure, size = '';
+    if (sdlcScope === 'app') {   // how big the typical application is: its build time with OutSystems; the time to production of each approach follows
+      var wk = function (ap) { return monthsText(Math.round(E.typicalTime(state, ap, typicalMonths).total * 12 / E.WPY * 10) / 10); };
+      size = '<div class="typsize"><span' + C.tip(tt('Typical application'), tt('How big the typical application is: its build time with OutSystems. The alternative is given the same amount of work, so it takes longer. Work grows with size (design, build, fixes, integration testing and testing at the review gates); waiting in review queues and releasing stay the same.')) + '>' + tt('Build time with OutSystems') + '</span> ' +
+        '<button type="button" class="b" data-typ="-1" aria-label="-">−</button> <b>' + monthsText(typicalMonths) + '</b> <button type="button" class="b" data-typ="1" aria-label="+">+</button>' +
+        '<span class="typtp">' + tt('Time to production: {alt} {a} · OutSystems {o}', { alt: esc(altShort()), a: wk('alt'), o: wk('os') }) + '</span></div>';
+    }
+    if (sdlcScope === 'port') {   // the whole portfolio has one schedule: from the start to the last go-live
+      var span = function (ap) { var w = 0; res[ap].projects.forEach(function (p) { if (p.goLive > w) w = p.goLive; }); return monthsText(Math.round(w * 12 / E.WPY * 10) / 10); };
+      size = '<div class="typsize"><span class="typtp" style="margin-left:0">' + tt('Time to deliver the portfolio: {alt} {a} · OutSystems {o}', { alt: esc(altShort()), a: span('alt'), o: span('os') }) + '</span></div>';
+    }
+    return '<div class="steps sdlcview">' + btn('sdlcview', 'app', sdlcScope === 'app', tt('Typical application')) + btn('sdlcview', 'port', sdlcScope === 'port', tt('Over {yrs} years', { yrs: yrs })) + '</div>' +
+      '<div class="steps sdlcview sub">' + (sdlcScope === 'app' ? mbtn('time', 'Time', 'Calendar weeks from the start of an application to go-live, including waiting in review queues. Waiting is not charged, but it delays the value.') : '') +
+        mbtn('effort', 'Effort', 'The work in person-days: the delivery team, looking after the applications, the operating people and the people who provide security. Licences, tooling, cloud and AI tokens cost money but have no person-days.') + mbtn('cost', 'Cost', 'Everything that costs money, in the phase it belongs to.') + '</div>' +
+      size + '<h5 class="sdlchead">' + heads[key] + '</h5><div class="note" style="margin:0 0 6px">' + notes[key] + (key === 'app/time' ? ' ' + tt('Work grows with the size of the application; waiting in review queues and releasing do not, so a phase that is mostly waiting grows less. Bars are drawn against the longest phase.') : '') + '</div>' +
       '<div class="refwrap"><table class="cmp sdlc">' + rows + '</table></div>';
   }
   var sdlcLast = '';
@@ -881,38 +916,130 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var cov = card('Capability, time and resources by phase',
       '<div class="sdlc-wrap">' + sdlcInner() + '</div>' +
       (withFp === false ? '' : '<div class="fp">' + fp(F.typical) + fp(F.ai) + fp(F.os) + '</div>'));
-    var cost = card('Cost by phase',
-      '<div class="note" style="margin:0 0 6px">' + tt('The alternative\'s tooling and operating resources by phase, and what is still needed with OutSystems. Each line\'s share follows the capability map above, unless you have typed your own on the Platform / Infrastructure tab.') + '</div>' +
-      '<div class="sdlc-cost"></div><p><button class="b" data-act="sdlc-apply"' + C.tip(tt('Use the map for every line'), tt('Clears every share you have typed yourself, so each tooling and operating-people line follows the capability map again. Lines in phases where the alternative needs nothing extra keep their own estimate.')) + '>' + tt('Use the map for every line') + '</button></p>');
+    var cost = card('Cost by phase: whole portfolio',
+      '<div class="note" style="margin:0 0 6px">' + tt('Every cost of each approach over the analysis period, by phase, for the whole portfolio, and what is still needed with OutSystems. Each tooling or people line\'s share follows the capability map, unless you have typed your own.') + '</div>' +
+      '<div class="sdlc-cost"></div>');
+    var one = card('Cost by phase: one typical application', '<div class="sdlc-cost-app"></div>');   // two tables, one for each scope, so it is always clear which is which
     var wide = function (h) { return h.replace('<div class="card">', '<div class="card" style="grid-column:1/-1">'); };
-    return wide(cov) + wide(cost).replace('class="card"', 'class="card fullonly-block"');
+    return wide(cov) + wide(one).replace('class="card"', 'class="card fullonly-block"') + wide(cost).replace('class="card"', 'class="card fullonly-block"');
+  }
+  /* Cost by phase can show the inputs behind each row in place (the Edit column). Orange marks a figure that differs from the standard line of the same name, or a line that is not a standard one. */
+  var sdlcEdit = false;
+  function lineMark(html, listKey, it, field) {
+    var dl = (DEFAULTS[listKey] || []).filter(function (d) { return d.name === it.name; })[0];
+    var changed = !dl || Math.abs(Number(it[field]) - Number(dl[field])) > 1e-9;
+    if (!changed) return html;
+    var dv = dl ? (field === 'os' ? Math.round(Number(dl.os) * 100) + '%' : Number(dl[field]).toLocaleString('en-US')) : '';
+    var tip = C.tip(tt('Changed from the default'), dl ? tt('The default for this line is {v}.', { v: dv }) : tt('This line is not one of the standard lines.'));
+    return html.replace(/^<input /, '<input class="ovr"' + tip + ' ').replace(/ class="ovr"([^>]*) class="([^"]*)"/, ' class="ovr $2"$1');
+  }
+  /* The inputs behind each kind of cost in a phase row. A row's editor lists exactly the kinds of cost the row contains (from E.costByPhase), so what can be edited always matches
+   * what the figure is made of: the delivery team (its applications), AI tokens, looking after the applications, the platform licence, cloud, security lines and one-off setup. */
+  function sdlcCatEditor(k, cats) {
+    var cur = esc(curSym()), out = '', has = function (c) { return !!(cats.alt[c] > 0 || cats.os[c] > 0); };
+    var grp = function (title, body) { return '<div class="edgrp"><div class="edcat">' + esc(tt(title)) + '</div>' + body + '</div>'; };
+    var one = function (label, input) { return '<div class="edline"><span class="edn" title="' + esc(label) + '">' + esc(label) + '</span>' + input + '<span></span></div>'; };
+    var two = function (label, a, o) { return '<div class="edline"><span class="edn" title="' + esc(label) + '">' + esc(label) + '</span>' + a + o + '</div>'; };
+    var h2 = '<div class="edline edh"><span></span><span>' + esc(altShort()) + '</span><span>OutSystems</span></div>';
+    if (has('team')) out += grp('Delivery team', '<div class="edline"><a class="more" data-go="applications"' + C.tip(tt('Delivery team'), tt('The delivery team\'s cost comes from the applications (their size and team), the delivery times and the hourly rates.')) + '>' + tt('Applications') + ' ›</a></div>');
+    if (k === 'Build' && has('tokens')) out += grp('AI tokens', one(tt('Token spend per application'), inp('tokens.spend', 500, 0)) + one(tt('Token saving with OutSystems (%)'), inp('tokens.saving', 1, 0, 100)));
+    if (k === 'Operate' && has('tokens')) out += grp('AI tokens', one(tt('After go-live (% of build token spend a year)'), inp('tokens.runPct', 5, 0, 300)));
+    if (has('run')) out += grp('Run & maintenance', h2 + two(tt('Break/fix (% of build cost a year)'), inp('maint.fix.alt', 1, 0, 200), inp('maint.fix.os', 1, 0, 200)) + two(tt('Enhancements (% of build cost a year)'), inp('maint.enh.alt', 1, 0, 200), inp('maint.enh.os', 1, 0, 200)));
+    if (k === 'Operate' && has('platform')) {
+      var pl = h2 + two(tt('Platform licence, {c} a year', { c: cur }), '<span></span>', inp('platform.os', 5000, 0));
+      if (state.osHosting === 'paas-sentry' || E.hostingOf(state) === 'paas-sentry') pl += two(tt('Additional Sentry licence, {c} a year', { c: cur }), '<span></span>', inp('platform.sentry', 1000, 0));
+      if (!(state.toolItems && state.toolItems.length)) pl += two(tt('Tooling, {c} a year', { c: cur }), inp('platform.alt', 5000, 0), inp('osTooling', 5000, 0));
+      out += grp('Licences and tooling', pl);
+    }
+    if (k === 'Operate' && has('infra')) {
+      if (state.infraItems && state.infraItems.length) out += grp('Infrastructure', state.infraItems.map(function (it, i) { return '<div class="edline"><span class="edn" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' + inp('infraItems.' + i + '.annual', 1000, 0) + pctInp('infraItems.' + i + '.os') + '</div>'; }).join(''));
+      else out += grp('Infrastructure', h2 + two(tt('Infrastructure, {c} a year', { c: cur }), inp('infra.alt', 5000, 0), inp('infra.os', 5000, 0)));
+    }
+    if (k === 'Enterprise trust & control' && has('assure') && state.assureItems && state.assureItems.length)
+      out += grp('Security and compliance', state.assureItems.map(function (it, i) { return '<div class="edline"><span class="edn" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' + (it.kind === 'people' ? inp('assureItems.' + i + '.fte', 0.05, 0) : inp('assureItems.' + i + '.annual', 1000, 0)) + pctInp('assureItems.' + i + '.os') + '</div>'; }).join(''));
+    if (k === 'Deploy' && has('setup')) out += grp('Setup (one-off)', h2 + one(tt('Hiring and onboarding'), inp('setup.alt.hiring', 10000, 0)) + one(tt('Building the environment'), inp('setup.alt.build', 10000, 0)) + one(tt('Environment tools'), inp('setup.alt.tools', 10000, 0)) + two(tt('OutSystems setup: managed / self-managed'), inp('setup.os.paas', 1000, 0), inp('setup.os.self', 1000, 0)));
+    return out;
+  }
+  function sdlcLineEditor(x) {
+    var cur = esc(curSym()), out = '';
+    var head = function (a, b) { return '<div class="edline edh"><span></span><span>' + a + '</span><span>' + b + '</span></div>'; };
+    var nm = function (n) { return '<span class="edn" title="' + esc(n) + '">' + esc(n) + '</span>'; };
+    var share = tt('Still needed with OutSystems %');
+    if (x.ti.length) out += '<div class="edgrp">' + head(tt('Alternative, {c} a year', { c: cur }), share) + x.ti.map(function (i) {
+      var it = state.toolItems[i];
+      return '<div class="edline">' + nm(it.name) + lineMark(inp('toolItems.' + i + '.annual', 1000, 0), 'toolItems', it, 'annual') + shareInp('toolItems', i) + '</div>';
+    }).join('') + '</div>';
+    if (x.ai.length) out += '<div class="edgrp">' + head(tt('Alternative, {c} a year', { c: cur }), share) + x.ai.map(function (i) {
+      var it = state.appAssure[i];
+      return '<div class="edline">' + nm(it.name) + lineMark(inp('appAssure.' + i + '.annual', 1000, 0), 'appAssure', it, 'annual') + lineMark(pctInp('appAssure.' + i + '.os'), 'appAssure', it, 'os') + '</div>';
+    }).join('') + '</div>';
+    if (x.pi.length) out += '<div class="edgrp">' + head(tt('Alt. FTE'), share) + x.pi.map(function (i) {
+      var it = state.opsItems[i];
+      return '<div class="edline">' + nm(it.name) + lineMark(inp('opsItems.' + i + '.fte', 0.05, 0), 'opsItems', it, 'fte') + shareInp('opsItems', i) + '</div>';
+    }).join('') + '</div>';
+    return out;
+  }
+  /* Cost by phase for one typical application: what it takes to get it into production. Its size is set above (build time with OutSystems); nothing here is edited. */
+  function renderSdlcCostApp() {
+    var hosts = document.querySelectorAll('.sdlc-cost-app'); if (!hosts.length) return;
+    var M = C.money, cp = E.costByPhase(state, res, typicalMonths);
+    var th = function (cls, label, tipTitle, tipBody) { return '<th' + (cls ? ' class="' + cls + '"' : '') + C.tip(tipTitle, tipBody) + '>' + esc(label) + '</th>'; };
+    var rows = '<tr>' + th('', tt('Phase'), tt('Phase'), tt('The phase of the software delivery lifecycle that each tooling line or operating role belongs to.')) +
+      th('', altShort(), altShort(), tt('What the alternative costs in this phase.')) + th('os', 'OutSystems', 'OutSystems', tt('What OutSystems costs in this phase.')) +
+      th('', tt('Difference'), tt('Difference'), tt('The alternative\'s cost less OutSystems\' cost for this phase: what OutSystems saves.')) +
+      th('', tt('Still needed'), tt('Still needed'), tt('OutSystems\' cost as a share of the alternative\'s in this phase. 100% means no saving; 0% means OutSystems replaces it.')) + '</tr>', ta = 0, to = 0;
+    var tipOf = function (x) { var lines = []; RES_CATS.forEach(function (c) { if (x && x.cats[c[0]] > 0) lines.push(tt(c[1]) + ': ' + M(x.cats[c[0]])); }); return lines.length ? C.tip(tt('Where it comes from'), lines.join('\n')) : ''; };
+    D.PHASES.forEach(function (ph) {
+      var xa = cp.alt.phases[ph.key], xo = cp.os.phases[ph.key], a = xa ? xa.total : 0, o = xo ? xo.total : 0, shared = (ph.key === 'Operate' || ph.key === 'Evolve') && !(a > 0) && !(o > 0);
+      ta += a; to += o;
+      rows += '<tr><td>' + esc(ph.key) + '</td>' + (shared ? '<td colspan="4"' + C.tip(ph.key, tt('Running the platform and looking after live applications are shared between applications, so they belong to the whole portfolio: see Over X years.')) + '><i>' + tt('shared: see the portfolio below') + '</i></td>'
+        : '<td' + tipOf(xa) + '>' + M(a) + '</td><td' + tipOf(xo) + '>' + M(o) + '</td><td>' + M(a - o) + '</td><td>' + (a > 0 ? Math.round(o / a * 100) + '%' : '–') + '</td>') + '</tr>';
+    });
+    rows += '<tr class="tot"><td>' + tt('Total for one application') + '</td><td>' + M(ta) + '</td><td>' + M(to) + '</td><td>' + M(ta - to) + '</td><td>' + (ta > 0 ? Math.round(to / ta * 100) + '%' : '–') + '</td></tr>';
+    var html = '<h5 class="sdlchead">' + tt('Typical application ({m}): its cost to reach production', { m: monthsText(typicalMonths) }) + '</h5><div class="note" style="margin:0 0 6px">' + tt('Change its size above, in the chart (build time with OutSystems). Nothing here is edited: its costs come from the delivery team, the AI build tokens and the per-application security work.') + '</div><div class="refwrap"><table class="cmp">' + rows + '</table></div>';
+    Array.prototype.forEach.call(hosts, function (h) { h.innerHTML = html; });
   }
   function renderSdlcCost() {
     var hosts = document.querySelectorAll('.sdlc-cost'); if (!hosts.length) return;
-    var host = { set innerHTML(h) { Array.prototype.forEach.call(hosts, function (x) { x.innerHTML = h; }); } };   // it appears on the Infrastructure and Pipeline tabs
-    if (!(state.toolItems && state.toolItems.length) && !(state.opsItems && state.opsItems.length)) { host.innerHTML = '<div class="note">' + tt('Break down the tooling and the operating resources on the Platform / Infrastructure tab to see their cost by phase.') + '</div>'; return; }
-    var M = C.money, map = sdlcRunMap(false);
+    var yrs = Math.max(1, Number(state.horizon) || 1);
+    renderSdlcCostApp();
+    var M = C.money, map = sdlcRunMap(false), cp = E.costByPhase(state, res, 0), one = false;
     var th = function (cls, label, tipTitle, tipBody) { return '<th' + (cls ? ' class="' + cls + '"' : '') + C.tip(tipTitle, tipBody) + '>' + esc(label) + '</th>'; };
     var rows = '<tr>' + th('', tt('Phase'), tt('Phase'), tt('The phase of the software delivery lifecycle that each tooling line or operating role belongs to.')) +
-      th('', altShort(), altShort(), tt('What the alternative spends on tooling and operating people in this phase.')) +
-      th('os', 'OutSystems', 'OutSystems', tt('What is still spent with OutSystems: the alternative\'s amount multiplied by the share still needed.')) +
+      th('', altShort(), altShort(), tt('What the alternative costs in this phase.')) +
+      th('os', 'OutSystems', 'OutSystems', tt('What OutSystems costs in this phase.')) +
       th('', tt('Difference'), tt('Difference'), tt('The alternative\'s cost less OutSystems\' cost for this phase: what OutSystems saves.')) +
-      th('', tt('Still needed'), tt('Still needed'), tt('The share of the alternative\'s cost that is still needed with OutSystems, from the tooling and operating-people lines. 100% means no saving; 0% means OutSystems replaces it.')) +
-      th('', tt('Edit'), tt('Edit'), tt('Where the figures in this row are changed: the yearly cost and share of tooling, the people (FTE and share), and the hourly rates of their roles. The cost of people is their time multiplied by their rate.')) + '</tr>', ta = 0, to = 0;
-    D.PHASES.map(function (p) { return p.key; }).concat(['Other']).forEach(function (k) {
-      var x = map[k]; if (!x) return;
-      var imp = k === 'Other' ? null : D.impliedOsShare(D.byKey(k)); ta += x.a; to += x.o;
-      var parts = function (t, p) { return C.tip(tt('Where it comes from'), tt('Tooling {t} · people {p}', { t: M(t), p: M(p) })); };   // security work counts with the tooling
+      th('', tt('Still needed'), tt('Still needed'), tt('OutSystems\' cost as a share of the alternative\'s in this phase. 100% means no saving; 0% means OutSystems replaces it.')) +
+      (sdlcEdit ? th('', tt('Edit'), tt('Edit'), tt('Where the figures in this row are changed: the yearly cost and share of tooling, the people (FTE and share), and the hourly rates of their roles. The cost of people is their time multiplied by their rate.')) : '') + '</tr>', ta = 0, to = 0;
+    var tipOf = function (x) {
+      var lines = []; RES_CATS.forEach(function (c) { if (x && x.cats[c[0]] > 0) lines.push(tt(c[1]) + ': ' + M(x.cats[c[0]])); });
+      return lines.length ? C.tip(tt('Where it comes from'), lines.join('\n')) : '';
+    };
+    D.PHASES.forEach(function (ph) {
+      var k = ph.key, x = map[k] || { ti: [], ai: [], pi: [], roles: {} }, xa = cp.alt.phases[k], xo = cp.os.phases[k], a = xa ? xa.total : 0, o = xo ? xo.total : 0;
+      ta += a; to += o;
       var link = function (label, tipBody, go) { return '<a class="more" data-go="' + go + '"' + C.tip(tt(label), tt(tipBody)) + '>' + tt(label) + ' ›</a>'; };
+      var ratesLink = x.pi.length ? link('Rates', 'Go to the hourly rates of the roles in this phase. Their time and their rate together set what the people cost.', 'rates#' + Object.keys(x.roles).map(function (r) { return 'rc:' + r; }).join(',')) : '';
       var edits = [];
-      if (x.ti.length) edits.push(link('Tooling', 'Go to the tooling lines in this phase to change their yearly cost and the share still needed with OutSystems.', 'infrastructure/cloud#' + x.ti.map(function (i) { return 'toolItems.' + i + '.annual,toolItems.' + i + '.os'; }).join(',')));
-      if (x.ai.length) edits.push(link('Security and compliance', 'Go to the per-application security work in this phase (penetration testing, accreditation) to change its yearly cost and the share still needed with OutSystems.', 'infrastructure/security#' + x.ai.map(function (i) { return 'appAssure.' + i + '.annual,appAssure.' + i + '.os'; }).join(',')));
-      if (x.pi.length) edits.push(link('People', 'Go to the operating people in this phase to change their time (FTE) and the share still needed with OutSystems.', 'infrastructure/people#' + x.pi.map(function (i) { return 'opsItems.' + i + '.fte,opsItems.' + i + '.os'; }).join(',')));
-      if (x.pi.length) edits.push(link('Rates', 'Go to the hourly rates of the roles in this phase. Their time and their rate together set what the people cost.', 'rates#' + Object.keys(x.roles).map(function (r) { return 'rc:' + r; }).join(',')));
-      rows += '<tr><td>' + esc(k) + '</td><td' + parts(x.ta + x.sa, x.pa) + '>' + M(x.a) + '</td><td' + parts(x.to + x.so, x.po) + '>' + M(x.o) + '</td><td>' + M(x.a - x.o) + '</td><td>' + (x.a > 0 ? Math.round(x.o / x.a * 100) + '%' : '–') + '</td><td class="edl">' + edits.join(' · ') + '</td></tr>';
+      if (sdlcEdit) edits.push(sdlcCatEditor(k, { alt: xa ? xa.cats : {}, os: xo ? xo.cats : {} }) + sdlcLineEditor(x) + (ratesLink ? '<div class="edrates">' + ratesLink + '</div>' : ''));
+      rows += '<tr data-ph="' + esc(k) + '"><td>' + esc(k) + '</td><td' + tipOf(xa) + '>' + M(a) + '</td><td' + tipOf(xo) + '>' + M(o) + '</td><td>' + M(a - o) + '</td><td>' + (a > 0 ? Math.round(o / a * 100) + '%' : '–') + '</td>' + (sdlcEdit ? '<td class="edl">' + edits.join('') + '</td>' : '') + '</tr>';
     });
-    rows += '<tr class="tot"><td>' + tt('Total') + '</td><td>' + M(ta) + '</td><td>' + M(to) + '</td><td>' + M(ta - to) + '</td><td>' + (ta > 0 ? Math.round(to / ta * 100) + '%' : '–') + '</td><td></td></tr>';
-    host.innerHTML = '<div class="refwrap"><table class="cmp">' + rows + '</table></div><div class="note">' + tt('All amounts are per year.') + '</div>';
+    rows += '<tr class="tot" data-ph="*"><td>' + tt('Total for the portfolio') + '</td><td>' + M(ta) + '</td><td>' + M(to) + '</td><td>' + M(ta - to) + '</td><td>' + (ta > 0 ? Math.round(to / ta * 100) + '%' : '–') + '</td>' + (sdlcEdit ? '<td></td>' : '') + '</tr>';
+    var bar = '<div class="sdlc-edbar"><button type="button" class="b" data-act="sdlc-edit"' + C.tip(tt('Edit inputs'), tt('Show the inputs behind each phase here (yearly costs, people, and the share still needed with OutSystems), so they can be changed without leaving this page. Hide them to see the totals only.')) + '>' + (sdlcEdit ? tt('Hide inputs') : tt('Edit inputs')) + '</button></div>';
+    var head = tt('Whole portfolio: its cost over {yrs} years', { yrs: yrs });
+    var what = tt('Edit inputs shows the organisation\'s yearly amounts.');
+    var html = bar + '<h5 class="sdlchead">' + head + '</h5><div class="note" style="margin:0 0 6px">' + what + '</div><div class="refwrap"><table class="cmp' + (sdlcEdit ? ' sdlc-editing' : '') + '">' + rows + '</table></div>';
+    Array.prototype.forEach.call(hosts, function (h) {
+      var ae = document.activeElement;
+      if (sdlcEdit && ae && h.contains(ae) && ae.matches && ae.matches('input')) {   // typing: update the figures around the box, not the box itself, so the cursor stays
+        var tmp = document.createElement('div'); tmp.innerHTML = html;
+        Array.prototype.forEach.call(tmp.querySelectorAll('tr[data-ph]'), function (nr) {
+          var old = null; Array.prototype.forEach.call(h.querySelectorAll('tr[data-ph]'), function (o) { if (o.getAttribute('data-ph') === nr.getAttribute('data-ph')) old = o; });
+          if (!old) return;
+          for (var c = 0; c < 5; c++) { var oc = old.cells[c], nc = nr.cells[c]; if (oc && nc) oc.replaceWith(nc); }
+        });
+      } else h.innerHTML = html;
+    });
   }
   var INFRA_COLORS = { platform: 'var(--g2)', infra: 'var(--t2)', ops: 'var(--p2)', assure: 'var(--m2)', setup: 'var(--o2)' };
 
@@ -1873,6 +2000,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var gg = state.deliveryGroups[parseInt(t.dataset.gmode, 10)];
       if (t.value === 'quote' && gg.mode !== 'quote') gg.quote = R.round3(E.osDeliveryCost(state, gg.id));
       gg.mode = t.value; buildKey(); buildProjects(); recalc();
+    } else if (t.dataset && t.dataset.phasepath) {   // a line moved to another phase: its cost goes there, and (unless typed) its share follows that phase's map
+      setPath(t.dataset.phasepath, t.value); E.applyMapShares(state); buildInfra(); recalc();
     } else if (t.dataset && t.dataset.rolepath) {
       setPath(t.dataset.rolepath, t.value); schedule();
     } else if (t.id === 'hardOnly' || t.id === 'hardOnly2') { state.hardOnly = t.checked; recalc(); }
@@ -2883,10 +3012,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       if (rcSel === state.country) { state.rates = rateDefaults(state.country, state.currency); schedule(); }
       buildRates(); buildCosts(); return;
     }
-    if (act === 'sdlc-apply') {   // every line follows the capability map again
-      ['toolItems', 'opsItems'].forEach(function (k) { (state[k] || []).forEach(function (it) { delete it.auto; }); });
-      var nSh = E.applyMapShares(state); buildInfra(); recalc(); toast(tt('Updated the shares on {n} lines from the SDLC map.', { n: nSh })); return;
-    }
+    if (act === 'sdlc-edit') { sdlcEdit = !sdlcEdit; renderSdlcCost(); return; }
     if (act === 'bd-expand' || act === 'bd-collapse' || act === 'item-add' || act === 'item-del') {
       var key = t.dataset.key, lk = t.dataset.list;
       if (act === 'bd-expand') E.expandBreakdown(state, key);
@@ -3519,7 +3645,9 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         var gid2 = t.dataset.gtoggle; gClosed[gid2] = !gClosed[gid2];
         var gel = document.querySelector('.dgroup[data-g="' + gid2 + '"]'); if (gel) { gel.classList.toggle('closed', !!gClosed[gid2]); t.textContent = gClosed[gid2] ? '▸' : '▾'; }
       }
-      else if (t.dataset && t.dataset.sdlcview) { sdlcView = t.dataset.sdlcview; refreshSdlc(true); }
+      else if (t.dataset && t.dataset.typ) { typicalMonths = Math.min(36, Math.max(1, typicalMonths + parseInt(t.dataset.typ, 10))); refreshSdlc(true); renderSdlcCost(); }
+      else if (t.dataset && t.dataset.sdlcmeasure) { sdlcMeasure = t.dataset.sdlcmeasure; refreshSdlc(true); renderSdlcCost(); }
+      else if (t.dataset && t.dataset.sdlcview) { sdlcScope = t.dataset.sdlcview; if (sdlcScope === 'port' && sdlcMeasure === 'time') sdlcMeasure = 'effort'; refreshSdlc(true); renderSdlcCost(); }
       else if (t.dataset && t.dataset.teamgroup !== undefined) { teamGroup = t.dataset.teamgroup || null; recalc(); }
       else if (t.dataset && t.dataset.teamsub) { teamSub = t.dataset.teamsub; recalc(); }
       else if (t.dataset && t.dataset.cbbasis) { cbBasis = t.dataset.cbbasis; recalc(); }
