@@ -420,7 +420,7 @@
     'escal.infra': ['Infrastructure cost change (% / yr)', 'How much cloud infrastructure costs more (or less) each year.']
   };
   var FIELD_LABEL = { name: 'Name', annual: 'Annual cost', os: 'Share still needed with OutSystems', kind: 'Kind', role: 'Role', fte: 'People (FTE)', id: 'Code', w: 'Queue wait (weeks)', r: 'Review (weeks)', s: 'Accepted first time (%)', f: 'Rework after a rejection (weeks)',
-    advantage: 'Share of the speed advantage that arrives', value: 'Share of the business value that arrives', rate: 'Rate level (%)', mode: 'Cost basis', quote: 'Delivery cost', skill: 'Experience with OutSystems', date: 'Date', team: 'After team', months: 'Months after' };
+    advantage: 'Share of the speed advantage that arrives', value: 'Share of the business value that arrives', rate: 'Rate level (%)', mode: 'Cost basis', quote: 'Delivery cost', skill: 'Developer quality', date: 'Date', team: 'After team', months: 'Months after' };
   var SIDE = { os: 'OutSystems', alt: 'Alternative' };
 
   /* i18n:end */
@@ -440,9 +440,10 @@
     if ((m = /^domains\.w\.(\w+)\.(\w+)$/.exec(key))) { var d = (E.DOMAINS || []).filter(function (x) { return x.key === m[1]; })[0], ph = (E.PHASES || []).filter(function (x) { return x.key === m[2]; })[0]; return [tt('{skill}: effort in {phase}', { skill: d ? tt(d.label) : m[1], phase: ph ? tt(ph.label) : m[2] }), tt('Relative weight of this skill area in this phase.')]; }
     if ((m = /^domains\.r\.(\w+)$/.exec(key))) { var d2 = (E.DOMAINS || []).filter(function (x) { return x.key === m[1]; })[0]; return [tt('{skill}: effort saved with OutSystems (%)', { skill: d2 ? tt(d2.label) : m[1] }), '']; }
     if ((m = /^(infraItems|toolItems|opsItems|assureItems|appAssure)\.(\d+)\.(\w+)$/.exec(key))) { var it = (state[m[1]] || [])[+m[2]] || {}; return [(it.name ? tt(it.name) : humanise(m[1]) + ' ' + (+m[2] + 1)) + ': ' + tt(FIELD_LABEL[m[3]] || humanise(m[3])), m[3] === 'os' ? tt('0 = made redundant by OutSystems, 1 = still needed in full.') : '']; }
-    if ((m = /^deliveryGroups\.(\d+)\.(\w+(?:\.\w+)?)$/.exec(key))) { var gr = (state.deliveryGroups || [])[+m[1]] || {}, f = m[2].replace(/^start\./, ''); return [(gr.name || tt('Delivery team')) + ': ' + (m[2].indexOf('start.') === 0 ? tt('Starts') + ' – ' : '') + tt(FIELD_LABEL[f] || humanise(f)), f === 'mode' && m[2] === 'start.mode' ? tt('after = straight after the previous team; fixed = on a date; team = months after another team.') : (m[2] === 'mode' ? tt('team = built from developers and rates; quote = a given cost.') : '')]; }
-    if ((m = /^skill\.levels\.(\w+)\.(effort|pay|enable)$/.exec(key))) return [tt('Experience with OutSystems: {level}: {f}', { level: tt(({ experienced: 'Experienced', mixed: 'Mixed experience', newer: 'Less experienced' })[m[1]] || m[1]), f: tt(({ effort: 'Effort ×', pay: 'Pay level (%)', enable: 'Training per developer' })[m[2]]) }), ''];
-    if (key === 'skill.learning') return [tt('Experience with OutSystems: applications to reach full speed'), tt('0 keeps the effort multiple for every application. A number such as 3 means the extra time falls away over a team\'s first few applications.')];
+    if ((m = /^deliveryGroups\.(\d+)\.(\w+(?:\.\w+)?)$/.exec(key))) { var gr = (state.deliveryGroups || [])[+m[1]] || {}, f = m[2].replace(/^start\./, ''), cu = /^custom\.(pace|discount|enable)$/.exec(m[2]);
+      if (cu) return [(gr.name || tt('Delivery team')) + ': ' + tt('Developer quality (custom)') + ' – ' + tt(({ pace: 'Slower by (%)', discount: 'Pay discount (%)', enable: 'Training per developer' })[cu[1]]), '']; return [(gr.name || tt('Delivery team')) + ': ' + (m[2].indexOf('start.') === 0 ? tt('Starts') + ' – ' : '') + tt(FIELD_LABEL[f] || humanise(f)), f === 'mode' && m[2] === 'start.mode' ? tt('start = months after the start; after = months after the previous team finishes; fixed = months after a date; team = months after another team.') : (m[2] === 'mode' ? tt('team = built from developers and rates; quote = a given cost.') : '')]; }
+    if ((m = /^skill\.levels\.(\w+)\.(pace|discount|enable)$/.exec(key))) return [tt('Developer quality: {level}: {f}', { level: tt(({ experienced: 'Experienced', mixed: 'Mixed experience', newer: 'Less experienced' })[m[1]] || m[1]), f: tt(({ pace: 'Slower by (%)', discount: 'Pay discount (%)', enable: 'Training per developer' })[m[2]]) }), ''];
+    if (key === 'skill.learning') return [tt('Developer quality: applications to reach full speed with OutSystems'), tt('0 keeps the effort multiple for every application. A number such as 3 means the extra time falls away over a team\'s first few applications.')];
     if ((m = /^seeds\.roleShare\.(\w+)$/.exec(key))) return [tt('Starting figures: % of employees in {role}', { role: tt(roleLabel(m[1])) }), ''];
     if (key === 'seeds.coverage') return [tt('Starting figures: share of a role on one application (%)'), ''];
     if ((m = /^seeds\.orgTypical\.(\w+)\.([01])$/.exec(key))) { var rg = (regions().REGIONS || []).filter(function (x) { return x.id === m[1]; })[0]; return [tt('Typical organisation: {country}: {f}', { country: rg ? tt(rg.name) : m[1], f: m[2] === '0' ? tt('Employees') : tt('Customers') }), '']; }
@@ -459,7 +460,7 @@
       ['The assessment', ['company', 'country', 'currency', 'altType', 'altName', 'horizon', 'rate', 'hardOnly', 'rampWeeks', 'growth', 'startDate', 'licenceStart']],
       ['Your organisation', ['org.']], ['Scenarios', ['realise.', 'custom.', 'cases.']]] },
     { id: 'delivery', title: 'Delivery', intro: 'The delivery teams, how they start, and the size of the team.', groups: [
-      ['Delivery teams', ['deliveryGroups.']], ['Experience with OutSystems', ['skill.']], ['Team', ['team.', 'altDevFactor', 'deliveryMode', 'deliveryQuote']]] },
+      ['Delivery teams', ['deliveryGroups.']], ['Developer quality', ['skill.']], ['Team', ['team.', 'altDevFactor', 'deliveryMode', 'deliveryQuote']]] },
     { id: 'people', title: 'People and rates', intro: 'The role mix, hourly rates and how costs change over the years.', groups: [
       ['Role mix', ['mix.']], ['Hourly rates', ['rates.', 'rateCards', 'groupCards', 'loadCards']], ['Cost changes over the years', ['escal.', 'over']]] },
     { id: 'platform', title: 'Platform and infrastructure', intro: 'Platform licence, hosting, infrastructure, tooling, operating people, and security and compliance.', groups: [
@@ -480,7 +481,7 @@
     var flat = flatten(state).filter(function (r) { return !(r.key === 'projectList' || r.key.indexOf('projectList.') === 0); }), used = {}, out = [];
     var rowFor = function (r) {
       var lb = settingLabel(state, r.key, E), v = r.type === 'b' ? !!r.value : (r.type === 'n' ? r.value : (r.type === 's' ? r.value : ''));
-      var note = lb[1] ? tt(lb[1]) : '', ch = CHOICES[r.key] || (/^deliveryGroups\.\d+\.start\.mode$/.test(r.key) ? ['after', 'fixed', 'team'] : /^deliveryGroups\.\d+\.mode$/.test(r.key) ? ['team', 'quote'] : null);
+      var note = lb[1] ? tt(lb[1]) : '', ch = CHOICES[r.key] || (/^deliveryGroups\.\d+\.start\.mode$/.test(r.key) ? ['start', 'after', 'fixed', 'team'] : /^deliveryGroups\.\d+\.mode$/.test(r.key) ? ['team', 'quote'] : null);
       return { cells: [lb[0], { v: v, s: STY.input }, { v: note, s: STY.note }, r.key, r.type], choices: ch, key: r.key };
     };
     SETTING_SHEETS.forEach(function (sh) {

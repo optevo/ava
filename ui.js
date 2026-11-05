@@ -851,7 +851,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function sdlcInner() {
     if (sdlcScope === 'port' && sdlcMeasure === 'time') sdlcMeasure = 'effort';   // elapsed weeks are only meaningful for one application
     var timed = sdlcScope === 'app' && sdlcMeasure === 'time', yrs = Math.max(1, Number(state.horizon) || 1);
-    var rows = '<tr><th style="text-align:left">Phase</th><th>' + esc(altLabel()) + '</th><th>OutSystems</th></tr>', maxW = 0, cp = timed ? null : sdlcCp(), tot = { alt: 0, os: 0 };
+    var unit = sdlcMeasure === 'effort' ? '<small class="unit">' + tt('person-days') + '</small>' : '';   // the bars show plain numbers for effort, so the column heads say what they count
+    var rows = '<tr><th style="text-align:left">Phase</th><th>' + esc(altLabel()) + unit + '</th><th>OutSystems' + unit + '</th></tr>', maxW = 0, cp = timed ? null : sdlcCp(), tot = { alt: 0, os: 0 };
     D.PHASES.forEach(function (ph) {
       ['alt', 'os'].forEach(function (ap) {
         var w = sdlcValue(ph, ap, cp);
@@ -1003,6 +1004,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var hosts = document.querySelectorAll('.sdlc-cost'); if (!hosts.length) return;
     var yrs = Math.max(1, Number(state.horizon) || 1);
     renderSdlcCostApp();
+    Array.prototype.forEach.call(document.querySelectorAll('.sdlc-cost-app'), function (h) { var c = h.closest && h.closest('.card'); if (c) c.style.display = sdlcScope === 'app' ? '' : 'none'; });   // only the table for the scope in view
+    Array.prototype.forEach.call(hosts, function (h) { var c = h.closest && h.closest('.card'); if (c) c.style.display = sdlcScope === 'port' ? '' : 'none'; });
     var M = C.money, map = sdlcRunMap(false), cp = E.costByPhase(state, res, 0), one = false;
     var th = function (cls, label, tipTitle, tipBody) { return '<th' + (cls ? ' class="' + cls + '"' : '') + C.tip(tipTitle, tipBody) + '>' + esc(label) + '</th>'; };
     var rows = '<tr>' + th('', tt('Phase'), tt('Phase'), tt('The phase of the software delivery lifecycle that each tooling line or operating role belongs to.')) +
@@ -1580,21 +1583,37 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   /* How experienced the team is with OutSystems: less experienced developers cost less per day but take longer. Developer-based teams only. */
   var SKILL_LEVELS = [['experienced', 'Experienced'], ['mixed', 'Mixed experience'], ['newer', 'Less experienced']];
+  /* Developer quality of a delivery team: a level (or Custom) that sets how much slower the team is (with either approach), the discount on its pay, and the training each developer needs to
+   * learn OutSystems. The three figures sit beside the level and can be typed over: the team then becomes Custom. A slower team costs more unless its pay is lower, and goes live later
+   * whatever its pay. */
   function skillControl(g, i, quote) {
     if (quote) return '';
-    return '<label class="gl"' + C.tip(tt('Experience with OutSystems'), tt('How experienced this team is with OutSystems. Less experienced developers usually cost less per day but take longer, so the saving per day does not carry through to the cost, and the extra time delays go-live and the value. Training and coaching are added as a one-off. The factors are on the Defaults tab.')) + '>' + tt('Experience with OutSystems') + ' <select data-gskill="' + i + '">' +
-      SKILL_LEVELS.map(function (x) { return '<option value="' + x[0] + '"' + ((g.skill || 'experienced') === x[0] ? ' selected' : '') + '>' + esc(tt(x[1])) + '</option>'; }).join('') + '</select></label>';
+    return '<label class="gl"' + C.tip(tt('Developer quality'), tt('How quick and experienced this team is. A less experienced team is usually paid less but takes longer, so the saving does not carry through to the cost, and the extra time delays go-live and the value. The level sets the three figures beside it, which you can change: the team then becomes Custom. The levels are on the Defaults tab.')) + '>' + tt('Developer quality') + ' <select data-gskill="' + i + '">' +
+      SKILL_LEVELS.concat([['custom', 'Custom']]).map(function (x) { return '<option value="' + x[0] + '"' + ((g.skill || 'experienced') === x[0] ? ' selected' : '') + '>' + esc(tt(x[1])) + '</option>'; }).join('') + '</select></label>';
   }
-  /* When this delivery team starts: straight after the previous team, on a fixed date, or some months after another team ends. */
+  function qualityRow(g, i, quote) {
+    if (quote) return '';
+    var sk = E.skillOf(state, g), f = function (field, label, tip, val, step) {
+      return '<label class="gl gqf"' + C.tip(tt(label), tt(tip)) + '>' + tt(label) + ' <input type="number" step="' + step + '" data-gq="' + i + '" data-gqf="' + field + '" value="' + val + '"></label>';
+    };
+    return f('pace', 'Slower by (%)', 'How much longer this team takes than an experienced one, with either approach. 50 means half as long again. It can fall away over the team\'s first applications (Defaults tab).', Math.round(sk.pace * 10) / 10, 5) +
+      f('discount', 'Pay discount (%)', 'How much less this team is paid than an experienced one, as a percentage. It is separate from the slowdown and applies to both approaches: the same people deliver whichever is chosen.', Math.round(sk.discount * 10) / 10, 5) +
+      f('enable', 'Training per developer', 'The one-off cost to train and coach each developer to learn OutSystems, charged at the start of the team\'s work. It applies to OutSystems only.', Math.round(sk.enable), 500);
+  }
+  /* When this delivery team starts: some months after the start, after the previous team finishes, or after a date. */
   function startControls(g, i) {
+    if (i === 0) {   // the first team starts when the assessment does: this is the assessment's start date (clear it to work in relative time)
+      return '<label class="gl"' + C.tip(tt('Starts'), tt('The first day of the assessment: the first delivery team starts then. Later teams can start after it, at the same time, or on a date of their own. Clear the date to work in relative time, without calendar dates.')) + '>' + tt('Starts') + ' <input type="date" data-text="startDate" value="' + esc(state.startDate || '') + '"></label>';
+    }
     var st = g.start || { mode: 'after', date: '', team: '', months: 0 }, others = E.ensureGroups(state).filter(function (o) { return o.id !== g.id; });
-    var sel = '<select data-gstart="' + i + '" data-gfield="mode">' + [['after', i === 0 ? 'At the start' : 'Straight after the previous team'], ['fixed', 'On a fixed date']].concat(others.length ? [['team', 'After another team']] : []).map(function (o) {
+    var opts = [['start', 'the start'], ['after', 'the previous team finishes'], ['fixed', 'a date']].concat(st.mode === 'team' && others.length ? [['team', 'another team finishes']] : []);   // 'another team' only for older files that use it
+    var sel = '<select data-gstart="' + i + '" data-gfield="mode">' + opts.map(function (o) {
       return '<option value="' + o[0] + '"' + (o[0] === st.mode ? ' selected' : '') + '>' + esc(tt(o[1])) + '</option>'; }).join('') + '</select>';
-    var more = '';
-    if (st.mode === 'fixed') more = '<input type="date" data-gstart="' + i + '" data-gfield="date" value="' + esc(st.date || '') + '"' + (state.startDate ? '' : ' disabled') + '>' + (state.startDate ? '' : ' <span class="note">' + tt('Set the assessment start date under Assumptions to use a fixed date.') + '</span>');
-    else if (st.mode === 'team') more = '<input type="number" min="0" step="0.5" data-gstart="' + i + '" data-gfield="months" value="' + esc(st.months) + '" style="width:60px"> ' + tt('months after') + ' <select data-gstart="' + i + '" data-gfield="team">' +
-      others.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === st.team ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') + '</select>';
-    return '<label class="gl"' + C.tip(tt('Starts'), tt('When this team begins. Straight after the previous team keeps teams one after another; a fixed date or a number of months after another team lets teams overlap and work in parallel. The end date follows from its applications.')) + '>' + tt('Starts') + ' ' + sel + more + '</label>';
+    var moIn = '<input type="number" min="0" step="0.5" data-gstart="' + i + '" data-gfield="months" value="' + esc(st.months) + '" style="width:60px">', more = '';
+    if (st.mode === 'fixed') more = ' <input type="date" data-gstart="' + i + '" data-gfield="date" value="' + esc(st.date || '') + '"' + (state.startDate ? '' : ' disabled') + '>' + (state.startDate ? '' : ' <span class="note">' + tt('Set the assessment start date under Assumptions to use a date.') + '</span>');
+    else if (st.mode === 'team') more = ' <select data-gstart="' + i + '" data-gfield="team">' + others.map(function (o) { return '<option value="' + esc(o.id) + '"' + (o.id === st.team ? ' selected' : '') + '>' + esc(o.name) + '</option>'; }).join('') + '</select>';
+    var sc = res && E.schedule(state, E.expectedTime(state, 'os'), 'os'), d0 = sc && sc.teamStart && sc.teamStart[g.id] !== undefined && state.startDate ? E.dateAtWeek(state, sc.teamStart[g.id]) : '';   // the date it works out to
+    return '<label class="gl"' + C.tip(tt('Starts'), tt('When this team begins: some months after the start of the assessment (0 runs it alongside the first team), after the previous team finishes (0 is straight after), or after a date. The end date follows from its applications.')) + '>' + tt('Starts') + ' ' + moIn + ' ' + tt('months after') + ' ' + sel + more + (d0 ? ' <span class="note" data-gdate="' + esc(g.id) + '">' + esc(showDate(d0)) + '</span>' : '') + '</label>';
   }
   function groupHeader(g, i, nGroups, open) {
     var q = g.mode === 'quote';
@@ -1603,10 +1622,9 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       '<div class="radios"><label><input type="radio" name="gmode-' + i + '" data-gmode="' + i + '" value="team"' + (q ? '' : ' checked') + '> ' + tt('Developer based') + '</label>' +
       '<label><input type="radio" name="gmode-' + i + '" data-gmode="' + i + '" value="quote"' + (q ? ' checked' : '') + '> ' + tt('Given cost') + '</label></div>' +
       (q ? '<label class="gl">' + tt('Delivery cost') + ' <i>' + esc(curSym()) + '</i> ' + inp('deliveryGroups.' + i + '.quote', 10000, 0) + '</label>' : '<label class="gl"' + C.tip('Rate level (%)', 'How the delivery people\'s cost compares with the reference rates for the country: 100% uses them as they are; a partner might be 140% and an internal team 85%.') + '>' + tt('Rate level (%)') + ' ' + inp('deliveryGroups.' + i + '.rate', 5, 10, 500) + '</label>') +
-      skillControl(g, i, q) +
       startControls(g, i) +
       (nGroups > 1 ? '<button class="b" data-act="gdel" data-i="' + i + '" title="' + esc(tt('Remove this delivery team')) + '">×</button>' : '') +
-      '<div class="gsum" id="gsum-' + i + '"></div><div class="note gimp" id="gimp-' + i + '"></div></div>';
+      (q ? '' : '<div class="gqrow">' + skillControl(g, i, q) + qualityRow(g, i, q) + '</div>') + '<div class="note gimp" id="gimp-' + i + '"></div></div>';
   }
 
   /* The ratios behind the starting figures: how many people are in each role, and how volumes scale with customers or employees. All editable and resettable. */
@@ -1643,13 +1661,15 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       '<div class="refwrap"><table class="ref indtab">' + indRows + '</table></div>' +
       '<p><button type="button" class="b" data-act="seeds-reset">' + tt('Reset these ratios') + '</button></p>'));
   }
-  /* Developer experience: how a team's experience with OutSystems changes its build time and pay, and what training it needs. */
+  /* Developer quality: how a team's level changes how long its work takes with each approach, what it is paid and what training it needs with OutSystems. */
   function skillTable() {
-    var sk = state.skill || {}, lv = sk.levels || {}, p = function (path, step, v) { return '<input type="number" data-path="' + path + '" data-scope="state" step="' + step + '" min="0" value="' + v + '">'; };
-    var rows = '<tr><th>' + tt('Experience with OutSystems') + '</th><th' + C.tip(tt('Effort ×'), tt('The multiple of the usual active build time. 1.5 means the team takes half as long again.')) + '>' + tt('Effort ×') + '</th><th' + C.tip(tt('Pay level (%)'), tt('How the team\'s pay compares with an experienced team\'s, as a percentage.')) + '>' + tt('Pay level (%)') + '</th><th' + C.tip(tt('Training per developer'), tt('One-off training and coaching for each developer, charged at the start of the team\'s work.')) + '>' + tt('Training per developer') + '</th></tr>' +
-      SKILL_LEVELS.map(function (x) { var d = lv[x[0]] || {}; return '<tr><td>' + esc(tt(x[1])) + '</td><td>' + p('skill.levels.' + x[0] + '.effort', 0.05, num0(d.effort)) + '</td><td>' + p('skill.levels.' + x[0] + '.pay', 5, num0(d.pay)) + '</td><td>' + p('skill.levels.' + x[0] + '.enable', 500, num0(d.enable)) + '</td></tr>'; }).join('') +
-      '<tr><td' + C.tip(tt('Applications to reach full speed'), tt('0 keeps the effort multiple for every application. A number such as 3 means the extra time falls away over a team\'s first few applications.')) + '>' + tt('Applications to reach full speed') + '</td><td>' + p('skill.learning', 1, num0(sk.learning)) + '</td><td></td><td></td></tr>';
-    return card('Developer experience', '<div class="note">' + tt('Less experienced developers are paid less but take longer, so a lower rate does not mean a lower cost, and the extra time delays go-live and the value. Choose a team\'s experience on the Applications tab. These factors are placeholders to validate.') + '</div><div class="refwrap"><table class="ref">' + rows + '</table></div>');
+    var sk = state.skill || {}, p = function (path, step, v) { return '<input type="number" data-path="' + path + '" data-scope="state" step="' + step + '" value="' + v + '">'; };
+    var th = function (label, tip) { return '<th' + C.tip(tt(label), tt(tip)) + '>' + tt(label) + '</th>'; };
+    var rows = '<tr><th>' + tt('Developer quality') + '</th>' + th('Slower by (%)', 'How much longer the team takes than an experienced one, with either approach. 50 means half as long again.') +
+      th('Pay discount (%)', 'How much less the team is paid than an experienced one, as a percentage. It applies to both approaches.') + th('Training per developer', 'The one-off cost to train and coach each developer to learn OutSystems, charged at the start of the team\'s work. It applies to OutSystems only.') + '</tr>' +
+      SKILL_LEVELS.map(function (x) { var d = E.levelOf(state, x[0]); return '<tr><td>' + esc(tt(x[1])) + '</td><td>' + p('skill.levels.' + x[0] + '.pace', 5, d.pace) + '</td><td>' + p('skill.levels.' + x[0] + '.discount', 5, d.discount) + '</td><td>' + p('skill.levels.' + x[0] + '.enable', 500, d.enable) + '</td></tr>'; }).join('') +
+      '<tr><td' + C.tip(tt('Applications to reach full speed'), tt('0 keeps the slowdown for every application. A number such as 3 means the slowdown falls away over a team\'s first few applications.')) + '>' + tt('Applications to reach full speed') + '</td><td>' + p('skill.learning', 1, num0(sk.learning)) + '</td><td></td><td></td></tr>';
+    return card('Developer quality', '<div class="note">' + tt('A less experienced team is paid less but takes longer, so a lower rate does not mean a lower cost, and the extra time delays go-live and the value. Choose a team\'s quality on the Applications tab, where its figures can also be changed for that team (Custom). The levels here are placeholders to validate.') + '</div><div class="refwrap"><table class="ref">' + rows + '</table></div>');
   }
   function buildDefaults() {
     var regs = '<div class="refwrap"><table class="ref"><tr><th>Geography</th><th>Country</th><th>Currency</th>' + R.ROLE_KEYS.map(function (k) { return '<th>' + esc(R.ROLE_LABELS[k]) + '</th>'; }).join('') + '</tr>' +
@@ -1719,6 +1739,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var txt = g.mode === 'quote' && gf[g.id] ? tt('This implies a rate level of {x}% of the reference rates.', { x: String(Math.round(gf[g.id] * 1000) / 10) }) : '';
       var a = $('gimp-' + i); if (a) a.textContent = txt;
       if (i === 0) { var p = $('rate-implied'); if (p) p.textContent = txt; }
+      var gd = document.querySelector('[data-gdate="' + g.id + '"]'), sc0 = res && E.schedule(state, E.expectedTime(state, 'os'), 'os');   // the date this team starts, kept up to date
+      if (gd && sc0 && sc0.teamStart && sc0.teamStart[g.id] !== undefined && state.startDate) gd.textContent = showDate(E.dateAtWeek(state, sc0.teamStart[g.id]));
     });
   }
   function updateRatesLive() {
@@ -1876,6 +1898,15 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var tk = document.querySelector('#summary .vside .box.take'); if (tk) tk.innerHTML = '<h4>' + tt('Takeaway') + '</h4>' + esc(sureTake());
       return;
     }
+    if (t.dataset && t.dataset.gq !== undefined) {   // a team's quality figure typed: the team becomes Custom, starting from what its level set
+      var qg = E.ensureGroups(state)[parseInt(t.dataset.gq, 10)];
+      if (qg) {
+        if (qg.skill !== 'custom') { var cur1 = E.skillOf(state, qg); qg.custom = { pace: cur1.pace, discount: cur1.discount, enable: cur1.enable }; qg.skill = 'custom'; var qs = document.querySelector('select[data-gskill="' + t.dataset.gq + '"]'); if (qs) qs.value = 'custom'; }
+        var qv = parseFloat(t.value); qg.custom[t.dataset.gqf] = isFinite(qv) && (t.dataset.gqf === 'pace' || qv >= 0) ? qv : 0;
+                schedule();
+      }
+      return;
+    }
     var sm = t.dataset && t.dataset.share && /^(toolItems|opsItems)\.(\d+)\.os$/.exec(t.dataset.path);
     if (sm) {   // typing a share makes it the user's own; clearing the box returns the line to the capability map
       var line = state[sm[1]][parseInt(sm[2], 10)];
@@ -1929,7 +1960,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function onChange(ev) {
     var t = ev.target, sp = t.dataset && t.dataset.special;
-    if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { sg2.skill = t.value; E.ensureGroups(state); buildProjects(); recalc(); } return; }   // a team's experience with OutSystems
+    if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { if (t.value === 'custom' && sg2.skill !== 'custom') { var cur0 = E.skillOf(state, sg2); sg2.custom = { pace: cur0.pace, discount: cur0.discount, enable: cur0.enable }; } sg2.skill = t.value; E.ensureGroups(state); buildProjects(); recalc(); } return; }   // a team's experience with OutSystems
     if (t.dataset && t.dataset.orgind !== undefined) { state.org.industry = t.value; E.applyOrgDefaults(state); buildInputs(); buildProjects(); recalc(); return; }   // the industry reshapes the starting figures
     if (t.dataset && t.dataset.usecase !== undefined) { setAppType(parseInt(t.dataset.usecase, 10), t.value); return; }   // an application's type
     if (t.dataset && t.dataset.text === 'startDate') { state.startDate = t.value; if (!t.value) state.licenceStart = ''; buildAssumptions(); buildProjects(); recalc(); return; }   // the date controls that depend on it are rebuilt
@@ -2964,19 +2995,6 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       if (k < 0 || !ro[k]) { el.textContent = '–'; el.removeAttribute('data-tip'); return; }
       el.textContent = C.moneyShort(ro[k].teamCost);
       el.setAttribute('data-tip', tt('Delivery cost') + '::' + tt('OutSystems {os}; the alternative {alt}.', { os: C.money(ro[k].teamCost), alt: C.money(ra[k] ? ra[k].teamCost : 0) }));
-    });
-    var pl = E.projectList(state), scOs = E.schedule(state, E.expectedTime(state, 'os'), 'os');
-    E.ensureGroups(state).forEach(function (g, i) {
-      var apps = pl.filter(function (p) { return p.group === g.id; }), months = 0, val = 0;
-      apps.forEach(function (p) { months += p.months || 0; val += E.annualOf(state, p.value); });
-      var cost = g.mode === 'quote' && Number(g.quote) > 0 ? Number(g.quote) : E.osDeliveryCost(state, g.id);
-      var skl = '', sgx = g.mode !== 'quote' && g.skill && g.skill !== 'experienced' ? E.skillOf(state, g) : null;
-      if (sgx) skl = tt('OutSystems build takes {x}× as long at {p}% of the usual pay', { x: f1(sgx.effort), p: Math.round(sgx.pay * 100) }) + ' · ';
-      var when = ''; if (scOs && scOs.teamStart && scOs.teamStart[g.id] !== undefined) {
-        var s0 = scOs.teamStart[g.id], e0 = scOs.teamEnd[g.id], d0 = E.dateAtWeek(state, s0), d1 = E.dateAtWeek(state, e0);
-        when = (d0 ? tt('Starts {s} · ends {e}', { s: showDate(d0), e: showDate(d1) }) : tt('Starts in month {s} · ends in month {e}', { s: f1(s0 * 12 / 52), e: f1(e0 * 12 / 52) })) + ' · ';
-      }
-      set('gsum-' + i, when + skl + (apps.length === 1 ? tt('1 application') : tt('{n} applications', { n: apps.length })) + ' · ' + tt('{m} months', { m: f1(months) }) + ' · ' + tt('Value {v} a year', { v: C.moneyShort(val) }) + ' · ' + tt('OutSystems delivery {c}', { c: C.moneyShort(cost) }));
     });
   }
   /* A default changed: refresh the assessment pages (but not the Defaults page being edited). */

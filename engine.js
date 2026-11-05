@@ -39,7 +39,7 @@
       /* Developers' experience with OutSystems, set on each delivery team. Less experienced developers are paid less but take longer, so the saving per day does not carry through to the cost,
        * and the extra time delays go-live. effort = multiple of the active build time, pay = % of the team's usual pay level, enable = one-off training and coaching per developer.
        * learning = the applications it takes a team to reach full speed (0 = the effort multiple stays for every application). Placeholders to validate. */
-      skill: { learning: 0, levels: { experienced: { effort: 1, pay: 100, enable: 0 }, mixed: { effort: 1.2, pay: 90, enable: 3000 }, newer: { effort: 1.5, pay: 75, enable: 8000 } } },
+      skill: { learning: 0, levels: { experienced: { pace: 0, discount: 0, enable: 0 }, mixed: { pace: 20, discount: 10, enable: 3000 }, newer: { pace: 50, discount: 25, enable: 8000 } } },
       seeds: seedDefaults(),   // the ratios that turn the organisation's size into starting volumes
       org: { employees: 0, customers: 0, auto: true, industry: '', industryOther: '' },   // optional: the organisation's size, used only to set sensible starting figures when a calculator is added
       startDate: '',   // optional: the assessment's first day (YYYY-MM-DD); without it everything stays in relative time
@@ -219,6 +219,7 @@
   var OLD_GATES = [{ id: 'test', alt: { w: 2, r: 2, s: 65, f: 2 }, os: { w: 0.5, r: 1, s: 90, f: 1 } }, { id: 'arch', alt: { w: 3, r: 1, s: 65, f: 2 }, os: { w: 0.5, r: 0.5, s: 95, f: 1 } },
     { id: 'sec', alt: { w: 4, r: 2, s: 60, f: 3 }, os: { w: 1, r: 1, s: 90, f: 1 } }];
   function migrateDefaults(state) {
+    if (state.skill && state.skill.levels) Object.keys(state.skill.levels).forEach(function (k) { var lv = state.skill.levels[k]; if (lv && (lv.pace === undefined || lv.discount === undefined)) { var d = levelOf(state, k); state.skill.levels[k] = { pace: d.pace, discount: d.discount, enable: d.enable }; } });   // files saved with effort multiples and pay levels
     if (state.org && state.org.auto === undefined) state.org.auto = !(num(state.org.employees) > 0 || num(state.org.customers) > 0);   // an older file with figures typed in keeps them
     applyOrgDefaults(state);
     if (state.tokens && state.tokens.spend === 40000) { state.tokens.spend = 100000; if (state.tokens.saving === 40) state.tokens.saving = 25; }   // the earlier defaults: spend a tiny share of the total, and a saving with no source; untouched token settings move to the new ones together
@@ -372,7 +373,7 @@
   /* When a delivery team starts: straight after the previous team ('after', the default), on a fixed date ('fixed'), or a number of months after another team ends ('team'). */
   function normaliseStart(g) {
     var s = g.start && typeof g.start === 'object' ? g.start : {};
-    g.start = { mode: s.mode === 'fixed' || s.mode === 'team' ? s.mode : 'after', date: typeof s.date === 'string' ? s.date : '', team: s.team || '', months: isFinite(parseFloat(s.months)) ? Math.max(0, parseFloat(s.months)) : 0 };
+    g.start = { mode: s.mode === 'fixed' || s.mode === 'team' || s.mode === 'start' ? s.mode : 'after', date: typeof s.date === 'string' ? s.date : '', team: s.team || '', months: isFinite(parseFloat(s.months)) ? Math.max(0, parseFloat(s.months)) : 0 };
   }
   /* Dates are optional ISO strings (YYYY-MM-DD). Without them everything stays in relative time. */
   function parseDate(s) {
@@ -392,7 +393,10 @@
   function ensureGroups(state) {
     if (!state.deliveryGroups || !state.deliveryGroups.length) state.deliveryGroups = [{ id: 'g1', name: 'Delivery team', rate: 100, mode: state.deliveryMode === 'quote' ? 'quote' : 'team', quote: num(state.deliveryQuote) }];
     var ids = {};
-    state.deliveryGroups.forEach(function (g) { ids[g.id] = 1; if (g.rate === undefined) g.rate = 100; if (g.mode !== 'quote') g.mode = 'team'; if (g.skill !== 'mixed' && g.skill !== 'newer') g.skill = 'experienced'; normaliseStart(g); });
+    state.deliveryGroups.forEach(function (g) { ids[g.id] = 1; if (g.rate === undefined) g.rate = 100; if (g.mode !== 'quote') g.mode = 'team'; if (g.skill !== 'mixed' && g.skill !== 'newer' && g.skill !== 'custom') g.skill = 'experienced';
+      if (g.skill === 'custom') g.custom = customOf(state, g); else delete g.custom; normaliseStart(g); });
+    var g0 = state.deliveryGroups[0];   // the first team starts when the assessment does: an earlier fixed date for it becomes the assessment's start date
+    if (g0.start && g0.start.mode === 'fixed') { if (!state.startDate && g0.start.date) state.startDate = g0.start.date; g0.start = { mode: 'after', date: '', team: '', months: 0 }; }
     (state.projectList || []).forEach(function (p) { if (!ids[p.group]) p.group = state.deliveryGroups[0].id; });
     return state.deliveryGroups;
   }
@@ -686,11 +690,29 @@
 
   /* Projects are assigned to the delivery team (lane) that is free first. A team is busy only for active
    * work (design, build, fixes), not while waiting in a review queue. */
-  /* How a delivery team's experience with OutSystems changes its OutSystems build: the effort multiple (decaying over the first applications when learning is set), the pay level
-   * and the one-off training per developer. Only developer-based teams, and only for OutSystems: a given cost already says what the team costs. */
+  /* Developer quality of a delivery team: how long its work takes (an effort multiple for each approach: the team's own pace, and for OutSystems also learning the platform), what it is
+   * paid (a level against an experienced team's), and the one-off training it needs with OutSystems. Three levels set these; Custom keeps the team's own figures. Only developer-based
+   * teams: a given cost already says what the team costs. The pay level applies to both approaches (the same people deliver whichever is used); training is for OutSystems only. */
+  /* A level's figures: how much slower the team is (a percentage, for whichever approach it delivers), the discount on its pay (a percentage) and the training each developer needs to learn
+   * OutSystems (an amount, charged only with OutSystems). Files saved with the earlier figures are converted: an effort multiple becomes a slowdown, and a pay level a discount. */
+  function legacyLevel(lv, def) {
+    var o = { pace: def.pace, discount: def.discount, enable: lv && lv.enable !== undefined ? num(lv.enable) : def.enable };
+    if (!lv) return { pace: def.pace, discount: def.discount, enable: def.enable };
+    if (lv.pace !== undefined) o.pace = num(lv.pace); else if (lv.effort !== undefined) o.pace = ((lv.altEffort !== undefined ? num(lv.altEffort) : num(lv.effort)) || 1) * 100 - 100;
+    if (lv.discount !== undefined) o.discount = num(lv.discount); else if (lv.pay !== undefined) o.discount = 100 - num(lv.pay);
+    return o;
+  }
+  function levelOf(state, key) {
+    var lv = ((state.skill || {}).levels || {})[key], def = defaultState().skill.levels[key] || { pace: 0, discount: 0, enable: 0 };
+    return legacyLevel(lv, def);
+  }
+  function customOf(state, g) {   // a team's own figures, started from the level it was on
+    var base = levelOf(state, g.skill === 'newer' ? 'newer' : 'mixed');
+    return legacyLevel(g.custom, base);
+  }
   function skillOf(state, g) {
-    var sk = state.skill || {}, lv = ((sk.levels || {})[g.skill]) || { effort: 1, pay: 100, enable: 0 };
-    return { effort: Math.max(0.1, num(lv.effort) || 1), pay: Math.max(0, num(lv.pay === undefined ? 100 : lv.pay)) / 100, enable: Math.max(0, num(lv.enable)), learning: Math.max(0, num(sk.learning)) };
+    var sk = state.skill || {}, lv = g.skill === 'custom' ? customOf(state, g) : levelOf(state, g.skill), pace = Math.max(-90, num(lv.pace)), disc = Math.min(100, num(lv.discount));
+    return { pace: pace, discount: disc, effort: 1 + pace / 100, pay: Math.max(0, 100 - disc) / 100, enable: Math.max(0, num(lv.enable)), learning: Math.max(0, num(sk.learning)) };
   }
   function schedule(state, T, ap) {
     var f = sizeFactor(state), list = projectList(state), groups = ensureGroups(state), res = [], begins = {}, ends = {}, visiting = {}, byId = {};
@@ -703,14 +725,15 @@
       if (visiting[g.id]) return { start: 0, end: 0, apps: [], cycle: true };   // a loop of "after team" rules: fall back to the start
       visiting[g.id] = true;
       var prev = idxOf[g.id] > 0 ? groups[idxOf[g.id] - 1] : null;
-      if (st.mode === 'fixed' && (w = weeksFromStart(state, st.date)) !== null) s = w;
+      if (st.mode === 'fixed' && (w = weeksFromStart(state, st.date)) !== null) s = w + st.months * WPY / 12;   // on a date, or some months after it
       else if (st.mode === 'team' && st.team && st.team !== g.id && byId[st.team]) s = place(byId[st.team]).end + st.months * WPY / 12;
-      else if (prev) s = place(prev).end;
-      var free = s, apps = [], sk = ap === 'os' && g.mode !== 'quote' && g.skill !== 'experienced' ? skillOf(state, g) : null, nth = 0;
+      else if (st.mode === 'start') s = st.months * WPY / 12;   // some months after the start of the assessment (0: alongside the first team)
+      else if (prev) s = place(prev).end + (st.mode === 'after' ? st.months * WPY / 12 : 0);   // straight after the previous team, or some months later
+      var free = s, apps = [], sk = g.mode !== 'quote' && g.skill !== 'experienced' ? skillOf(state, g) : null, nth = 0;
       list.forEach(function (p, i) {
         if (p.group !== g.id) return;
         var sc = p.scale * f, ref = T.active * sc, mult = 1, pay = 1;
-        if (sk) { mult = 1 + (sk.effort - 1) * (sk.learning > 0 ? Math.max(0, 1 - nth / sk.learning) : 1); pay = sk.pay; }
+        if (sk) { mult = 1 + (sk.effort - 1) * (sk.learning > 0 ? Math.max(0, 1 - nth / sk.learning) : 1); pay = sk.pay; }   // the slowdown can fade over a team's first applications
         var active = ref * mult, total = T.total + (sc - 1) * T.scalable + (active - ref), start = free;   // a slower team also pushes go-live back by the extra time
         free = start + active; nth++;
         apps.push({ index: i, name: p.name, scale: sc, devs: p.devs, build: p.build, group: p.group, value: p.value, annualIncluded: annualOf(state, p.value), lane: 0,
@@ -1436,6 +1459,21 @@
     return out;
   }
 
+  /* What a team's developer quality does, compared with the same team at the experienced level: the change in the delivery team's cost, in the weeks to production of its
+   * applications, in the value earned over the period and in the net benefit, for each approach. (r is the result of run() for the assessment as it stands.) */
+  function qualityImpact(state, r, gid) {
+    var g = ensureGroups(state).filter(function (x) { return x.id === gid; })[0];
+    if (!g || g.mode === 'quote' || g.skill === 'experienced') return null;
+    var base = JSON.parse(JSON.stringify(state)); ensureGroups(base).forEach(function (x) { if (x.id === gid) { x.skill = 'experienced'; } });
+    var r0 = run(base), out = {};
+    ['os', 'alt'].forEach(function (ap) {
+      var wk = function (rr) { var n = 0, t = 0; rr[ap].projects.forEach(function (p) { if (p.group === gid) { n++; t += p.goLive - p.start; } }); return n ? t / n : 0; };
+      out[ap] = { team: r[ap].sumCost.team - r0[ap].sumCost.team, teamPct: r0[ap].sumCost.team > 0 ? r[ap].sumCost.team / r0[ap].sumCost.team - 1 : 0, weeks: wk(r) - wk(r0),
+        value: r[ap].totalValue - r0[ap].totalValue, net: r[ap].totalValue - r[ap].totalCost - (r0[ap].totalValue - r0[ap].totalCost) };
+    });
+    return out;
+  }
+
   /* The inputs behind each kind of cost, as the Cost by phase editor lists them (the delivery team's inputs are the applications, delivery times and rates). A test changes each of
    * them and checks that the cost it is listed under moves, so the editor never offers an input that does nothing to its row. */
   var CAT_INPUTS = {
@@ -1452,7 +1490,7 @@
     defaultState: defaultState, passProb: passProb, ROLES: ROLES, ALL_ROLES: ALL_ROLES, mixCost: mixCost, peoplePerDev: peoplePerDev, devsFor: devsFor, weekCost: weekCost,
     sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
     expandBreakdown: expandBreakdown, collapseBreakdown: collapseBreakdown, expectedTime: expectedTime,
-    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, skillOf: skillOf,
+    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, skillOf: skillOf, levelOf: levelOf, qualityImpact: qualityImpact,
     projectList: projectList, ensureList: ensureList, bauYear: bauYear, maintPct: maintPct, mapShare: mapShare, applyMapShares: applyMapShares, ensureGroups: ensureGroups, groupFactors: groupFactors, migrateDefaults: migrateDefaults, factorAt: factorAt, hasPattern: hasPattern, yearState: yearState, buildValueYear: buildValueYear, overlapping: overlapping, LINE_HOURS: LINE_HOURS, seedLine: seedLine, seedDefaults: seedDefaults, applyOrgDefaults: applyOrgDefaults, INDUSTRIES: INDUSTRIES, matchTypes: matchTypes, USE_ALIASES: USE_ALIASES, ORG_TYPICAL: ORG_TYPICAL, roundSig: roundSig, USE_CASES: USE_CASES, avgDevs: avgDevs, isSimple: isSimple, simpleIndex: simpleIndex, annualOf: annualOf, monthsMode: monthsMode, deriveMonths: deriveMonths, migrateMonths: migrateMonths, LINE_MONEY: LINE_MONEY, newLine: newLine, lineValue: lineValue, hasBuild: hasBuild, buildValue: buildValue, expandProjects: expandProjects,
     schedule: schedule, approachResult: approachResult, run: run
   };
