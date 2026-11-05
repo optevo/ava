@@ -831,7 +831,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var r = phaseResources(ph, ap, cp);
     return sdlcMeasure === 'effort' ? r.effort : r.total;
   }
-  function sdlcText(v) { return sdlcMeasure === 'time' ? tt('{n} wk', { n: f1(v) }) : sdlcMeasure === 'effort' ? Math.round(v).toLocaleString() : C.moneyShort(v); }
+  function sdlcText(v) { return sdlcMeasure === 'time' ? tt('{n} wk', { n: f1(v) }) : sdlcMeasure === 'effort' ? tt('{n} days', { n: Math.round(v).toLocaleString() }) : C.moneyShort(v); }
   function resBar(ph, ap, maxR, cp) {
     var r = phaseResources(ph, ap, cp), M = C.moneyShort, who = ap === 'alt' ? altLabel() : 'OutSystems', yrs = Math.max(1, Number(state.horizon) || 1), days = sdlcMeasure === 'effort', v = sdlcValue(ph, ap, cp);
     if (v < (days ? 0.5 : 1) && sdlcScope === 'app' && (ph.key === 'Operate' || ph.key === 'Evolve')) return '<span class="tm none"' + C.tip(ph.key + ' · ' + tt(who), tt('Running the platform and looking after live applications are shared between applications, so they belong to the whole portfolio: see Over X years.')) + '>' + tt('shared') + '</span>';
@@ -851,8 +851,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function sdlcInner() {
     if (sdlcScope === 'port' && sdlcMeasure === 'time') sdlcMeasure = 'effort';   // elapsed weeks are only meaningful for one application
     var timed = sdlcScope === 'app' && sdlcMeasure === 'time', yrs = Math.max(1, Number(state.horizon) || 1);
-    var unit = sdlcMeasure === 'effort' ? '<small class="unit">' + tt('person-days') + '</small>' : '';   // the bars show plain numbers for effort, so the column heads say what they count
-    var rows = '<tr><th style="text-align:left">Phase</th><th>' + esc(altLabel()) + unit + '</th><th>OutSystems' + unit + '</th></tr>', maxW = 0, cp = timed ? null : sdlcCp(), tot = { alt: 0, os: 0 };
+    var rows = '<tr><th style="text-align:left">Phase</th><th>' + esc(altLabel()) + '</th><th>OutSystems</th></tr>', maxW = 0, cp = timed ? null : sdlcCp(), tot = { alt: 0, os: 0 };
     D.PHASES.forEach(function (ph) {
       ['alt', 'os'].forEach(function (ap) {
         var w = sdlcValue(ph, ap, cp);
@@ -892,7 +891,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     }
     return '<div class="steps sdlcview">' + btn('sdlcview', 'app', sdlcScope === 'app', tt('Typical application')) + btn('sdlcview', 'port', sdlcScope === 'port', tt('Over {yrs} years', { yrs: yrs })) + '</div>' +
       '<div class="steps sdlcview sub">' + (sdlcScope === 'app' ? mbtn('time', 'Time', 'Calendar weeks from the start of an application to go-live, including waiting in review queues. Waiting is not charged, but it delays the value.') : '') +
-        mbtn('effort', 'Effort', 'The work in person-days: the delivery team, looking after the applications, the operating people and the people who provide security. Licences, tooling, cloud and AI tokens cost money but have no person-days.') + mbtn('cost', 'Cost', 'Everything that costs money, in the phase it belongs to.') + '</div>' +
+        mbtn('effort', 'Effort', 'The work, shown in days (person-days: one person working for one day): the delivery team, looking after the applications, the operating people and the people who provide security. Licences, tooling, cloud and AI tokens cost money but have no person-days.') + mbtn('cost', 'Cost', 'Everything that costs money, in the phase it belongs to.') + '</div>' +
       size + '<h5 class="sdlchead">' + heads[key] + '</h5><div class="note" style="margin:0 0 6px">' + notes[key] + (key === 'app/time' ? ' ' + tt('Work grows with the size of the application; waiting in review queues and releasing do not, so a phase that is mostly waiting grows less. Bars are drawn against the longest phase.') : '') + '</div>' +
       '<div class="refwrap"><table class="cmp sdlc">' + rows + '</table></div>';
   }
