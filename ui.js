@@ -1620,7 +1620,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       (q ? '<label class="gl">' + tt('Delivery cost') + ' <i>' + esc(curSym()) + '</i> ' + inp('deliveryGroups.' + i + '.quote', 10000, 0) + '</label>' : '<label class="gl"' + C.tip('Rate level (%)', 'How the delivery people\'s cost compares with the reference rates for the country: 100% uses them as they are; a partner might be 140% and an internal team 85%.') + '>' + tt('Rate level (%)') + ' ' + inp('deliveryGroups.' + i + '.rate', 5, 10, 500) + '</label>') +
       startControls(g, i) +
       (nGroups > 1 ? '<button class="b" data-act="gdel" data-i="' + i + '" title="' + esc(tt('Remove this delivery team')) + '">×</button>' : '') +
-      '<div class="gqrow">' + skillControl(g, i, q) + qualityRow(g, i, q) + '</div>' + (q && (g.skill || 'experienced') !== 'experienced' ? '<div class="note" style="flex-basis:100%;margin:0 0 0 38px">' + tt('The given cost is for an experienced team: the figures above change it, as they change a developer-based team.') + '</div>' : '') + '<div class="note gimp" id="gimp-' + i + '"></div></div>';
+      '<div class="gqrow">' + skillControl(g, i, q) + qualityRow(g, i, q) + '</div>' + '</div>';
   }
 
   /* The ratios behind the starting figures: how many people are in each role, and how volumes scale with customers or employees. All editable and resettable. */
@@ -1733,7 +1733,6 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var gf = res && res.groupFactors || {}, groups = E.ensureGroups(state);
     groups.forEach(function (g, i) {
       var txt = g.mode === 'quote' && gf[g.id] ? tt('This implies a rate level of {x}% of the reference rates.', { x: String(Math.round(gf[g.id] * 1000) / 10) }) : '';
-      var a = $('gimp-' + i); if (a) a.textContent = txt;
       if (i === 0) { var p = $('rate-implied'); if (p) p.textContent = txt; }
       var gd = document.querySelector('[data-gdate="' + g.id + '"]'), sc0 = res && E.schedule(state, E.expectedTime(state, 'os'), 'os');   // the date this team starts, kept up to date
       if (gd && sc0 && sc0.teamStart && sc0.teamStart[g.id] !== undefined && state.startDate) gd.textContent = showDate(E.dateAtWeek(state, sc0.teamStart[g.id]));

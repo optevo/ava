@@ -382,7 +382,6 @@ AVAI18n.setCatalogue([
   {"k": "The figures that most directly set the size of the result: platform cost, business value, how long the work takes.", "a": "Explanations"},
   {"k": "The first day of the assessment: the first delivery team starts then. Later teams can start after it, at the same time, or on a date of their own. Clear the date to work in relative time, without calendar dates.", "a": "Explanations"},
   {"k": "The full cost of a person to the organisation, not just salary: it adds employer taxes, pension or superannuation, leave, equipment and space. The loaded cost multiplier is that uplift, so a salary of 100,000 at 1.3 is a loaded cost of 130,000 a year. The model uses loaded cost for the delivery teams and for the business time the applications save, so people are not under-costed.", "a": "Explanations"},
-  {"k": "The given cost is for an experienced team: the figures above change it, as they change a developer-based team.", "a": "Explanations"},
   {"k": "The headline figures for this assessment: what OutSystems delivers against the alternative. Hover a card for how it is worked out.", "a": "Explanations"},
   {"k": "The hourly cost of each role in the country's own currency, viewable and changeable (Rates tab).", "a": "Explanations"},
   {"k": "The infrastructure bill at full run for the whole portfolio, one line per service. It grows as applications go live. A fuller breakdown can replace these lines.", "a": "Explanations"},
