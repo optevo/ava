@@ -892,7 +892,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     return '<div class="steps sdlcview">' + btn('sdlcview', 'app', sdlcScope === 'app', tt('Typical application')) + btn('sdlcview', 'port', sdlcScope === 'port', tt('Over {yrs} years', { yrs: yrs })) + '</div>' +
       '<div class="steps sdlcview sub">' + (sdlcScope === 'app' ? mbtn('time', 'Time', 'Calendar weeks from the start of an application to go-live, including waiting in review queues. Waiting is not charged, but it delays the value.') : '') +
         mbtn('effort', 'Effort', 'The work, shown in days (person-days: one person working for one day): the delivery team, looking after the applications, the operating people and the people who provide security. Licences, tooling, cloud and AI tokens cost money but have no person-days.') + mbtn('cost', 'Cost', 'Everything that costs money, in the phase it belongs to.') + '</div>' +
-      size + '<h5 class="sdlchead">' + heads[key] + '</h5><div class="note" style="margin:0 0 6px">' + notes[key] + (key === 'app/time' ? ' ' + tt('Work grows with the size of the application; waiting in review queues and releasing do not, so a phase that is mostly waiting grows less. Bars are drawn against the longest phase.') : '') + '</div>' +
+      size + '<h5 class="sdlchead">' + heads[key] + '</h5><div class="note sdlcnote">' + notes[key] + (key === 'app/time' ? ' ' + tt('Work grows with the size of the application; waiting in review queues and releasing do not, so a phase that is mostly waiting grows less. Bars are drawn against the longest phase.') : '') + '</div>' +
       '<div class="refwrap"><table class="cmp sdlc">' + rows + '</table></div>';
   }
   var sdlcLast = '';
