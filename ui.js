@@ -1585,12 +1585,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
    * learn OutSystems. The three figures sit beside the level and can be typed over: the team then becomes Custom. A slower team costs more unless its pay is lower, and goes live later
    * whatever its pay. */
   function skillControl(g, i, quote) {
-    if (quote) return '';
     return '<label class="gl"' + C.tip(tt('Developer quality'), tt('How quick and experienced this team is. A less experienced team is usually paid less but takes longer, so the saving does not carry through to the cost, and the extra time delays go-live and the value. The level sets the three figures beside it, which you can change: the team then becomes Custom. The levels are on the Defaults tab.')) + '>' + tt('Developer quality') + ' <select data-gskill="' + i + '">' +
       SKILL_LEVELS.concat([['custom', 'Custom']]).map(function (x) { return '<option value="' + x[0] + '"' + ((g.skill || 'experienced') === x[0] ? ' selected' : '') + '>' + esc(tt(x[1])) + '</option>'; }).join('') + '</select></label>';
   }
   function qualityRow(g, i, quote) {
-    if (quote) return '';
     var sk = E.skillOf(state, g), f = function (field, label, tip, val, step) {
       return '<label class="gl gqf"' + C.tip(tt(label), tt(tip)) + '>' + tt(label) + ' <input type="number" step="' + step + '" data-gq="' + i + '" data-gqf="' + field + '" value="' + val + '"></label>';
     };
@@ -1622,7 +1620,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       (q ? '<label class="gl">' + tt('Delivery cost') + ' <i>' + esc(curSym()) + '</i> ' + inp('deliveryGroups.' + i + '.quote', 10000, 0) + '</label>' : '<label class="gl"' + C.tip('Rate level (%)', 'How the delivery people\'s cost compares with the reference rates for the country: 100% uses them as they are; a partner might be 140% and an internal team 85%.') + '>' + tt('Rate level (%)') + ' ' + inp('deliveryGroups.' + i + '.rate', 5, 10, 500) + '</label>') +
       startControls(g, i) +
       (nGroups > 1 ? '<button class="b" data-act="gdel" data-i="' + i + '" title="' + esc(tt('Remove this delivery team')) + '">×</button>' : '') +
-      (q ? '' : '<div class="gqrow">' + skillControl(g, i, q) + qualityRow(g, i, q) + '</div>') + '<div class="note gimp" id="gimp-' + i + '"></div></div>';
+      '<div class="gqrow">' + skillControl(g, i, q) + qualityRow(g, i, q) + '</div>' + (q && (g.skill || 'experienced') !== 'experienced' ? '<div class="note" style="flex-basis:100%;margin:0 0 0 38px">' + tt('The given cost is for an experienced team: the figures above change it, as they change a developer-based team.') + '</div>' : '') + '<div class="note gimp" id="gimp-' + i + '"></div></div>';
   }
 
   /* The ratios behind the starting figures: how many people are in each role, and how volumes scale with customers or employees. All editable and resettable. */

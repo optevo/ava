@@ -729,7 +729,7 @@
       else if (st.mode === 'team' && st.team && st.team !== g.id && byId[st.team]) s = place(byId[st.team]).end + st.months * WPY / 12;
       else if (st.mode === 'start') s = st.months * WPY / 12;   // some months after the start of the assessment (0: alongside the first team)
       else if (prev) s = place(prev).end + (st.mode === 'after' ? st.months * WPY / 12 : 0);   // straight after the previous team, or some months later
-      var free = s, apps = [], sk = g.mode !== 'quote' && g.skill !== 'experienced' ? skillOf(state, g) : null, nth = 0;
+      var free = s, apps = [], sk = g.skill !== 'experienced' ? skillOf(state, g) : null, nth = 0;
       list.forEach(function (p, i) {
         if (p.group !== g.id) return;
         var sc = p.scale * f, ref = T.active * sc, mult = 1, pay = 1;
@@ -890,9 +890,9 @@
   }
 
   /* The OutSystems delivery team's cost at the reference rates (rate level 100%), for each delivery group. */
-  function groupBase(state) {
+  function groupBase(state, ref) {   // ref: the work of an experienced team (a given cost is for that), not this team's slower work
     var T = expectedTime(state, 'os'), base = {};
-    schedule(state, T).forEach(function (p) { base[p.group] = (base[p.group] || 0) + p.active * weekCost(state, 'os', p.devs); });
+    schedule(state, T).forEach(function (p) { base[p.group] = (base[p.group] || 0) + (ref && p.activeRef !== undefined ? p.activeRef : p.active) * weekCost(state, 'os', p.devs); });
     return base;
   }
   /* What the developers and rate levels imply for the OutSystems delivery cost: of one group, or of the whole portfolio. */
@@ -903,7 +903,7 @@
   }
   /* The multiple of the reference rates each group's people cost: its rate level when developer based, or what makes its OutSystems team cost the given amount. */
   function groupFactors(state) {
-    var base = groupBase(state), out = {};
+    var base = groupBase(state, true), out = {};
     ensureGroups(state).forEach(function (g) {
       out[g.id] = g.mode === 'quote' && num(g.quote) > 0 && base[g.id] > 0 ? num(g.quote) / base[g.id] : Math.max(0, num(g.rate)) / 100;
     });
@@ -1041,7 +1041,7 @@
 
     if (ap === 'os') {   // training and coaching for a team new to OutSystems, as a one-off at the start of its work
       ensureGroups(state).forEach(function (g) {
-        if (g.mode === 'quote' || g.skill === 'experienced') return;
+        if (g.skill === 'experienced') return;
         var sk = skillOf(state, g), devs = 0, start = sched.teamStart ? sched.teamStart[g.id] : 0;
         sched.forEach(function (p) { if (p.group === g.id) devs = Math.max(devs, num(p.devs)); });
         if (sk.enable > 0 && devs > 0) addUniform(cost.setup, start || 0, (start || 0) + 8, sk.enable * devs);
@@ -1463,7 +1463,7 @@
    * applications, in the value earned over the period and in the net benefit, for each approach. (r is the result of run() for the assessment as it stands.) */
   function qualityImpact(state, r, gid) {
     var g = ensureGroups(state).filter(function (x) { return x.id === gid; })[0];
-    if (!g || g.mode === 'quote' || g.skill === 'experienced') return null;
+    if (!g || g.skill === 'experienced') return null;
     var base = JSON.parse(JSON.stringify(state)); ensureGroups(base).forEach(function (x) { if (x.id === gid) { x.skill = 'experienced'; } });
     var r0 = run(base), out = {};
     ['os', 'alt'].forEach(function (ap) {
