@@ -175,9 +175,6 @@
   /* ---- Click a chart item to go to where its base cost is edited ----
    * A target is "tab/sub-tab#field". The field is an input's data-path; a * matches one path segment, and a comma lists several.
    * The tab "panel" is the Assessment inputs pane on the left. The inputs found flash for a few seconds, then the highlight fades. */
-  /* OutSystems with no AI token cost at all: a tick, and the saving percentage is disabled while it is on. */
-  function tokFreeBox() { return '<input type="checkbox" data-tokfree="1"' + (state.tokens.osNone ? ' checked' : '') + '>'; }
-  function tokSaving(html) { return state.tokens.osNone ? html.replace('<input ', '<input disabled ') : html; }
   function costGo(cat, g) {   // g: 0 the alternative, 1 OutSystems, undefined for either
     switch (cat) {
       case 'team': return 'costs#rates.*';
@@ -452,8 +449,7 @@
     cards += card('AI tokens',
       (d ? '' : row('Token spend per app <i>' + esc(curSym()) + '</i>', inp('tokens.spend', 500, 0, undefined, scope), 'Current or projected AI build-token spend per application for the alternative.')) +
       row('After go-live (% of build token spend a year)', inp('tokens.runPct', 5, 0, 300, scope), 'AI tokens keep being used after go-live, for AI-assisted fixes and changes and for any model use inside the applications. This is the yearly spend as a share of the build spend. Placeholder to replace with measured figures.') +
-      (d ? '' : row('OutSystems has no AI token cost', tokFreeBox(), 'Tick to treat OutSystems as having no AI token spend at all (the platform provides the AI assistance). The saving below is then not used.')) +
-      row('Token saving (%)', tokSaving(inp('tokens.saving', 1, 0, 100, scope)), 'Placeholder (25%) to be validated, for example in a proof of concept.') +
+      row('Token saving (%)', inp('tokens.saving', 1, 0, 100, scope), 'Placeholder (25%) to be validated, for example in a proof of concept.') +
       '<div class="note">Model-driven development is more constrained, so it should need fewer tokens. Treat the saving as an assumption until measured.</div>');
     if (!d) cards += card('OutSystems infrastructure', row('Infrastructure / yr <i>' + esc(curSym()) + '</i>', inp('infra.os', 5000, 0), 'Only if OutSystems is self-managed. OutSystems PaaS includes the infrastructure, so this is normally zero.') +
       '<div class="note">Normally zero: OutSystems PaaS includes the hosting.</div>');
@@ -949,7 +945,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var two = function (label, a, o) { return '<div class="edline"><span class="edn" title="' + esc(label) + '">' + esc(label) + '</span>' + a + o + '</div>'; };
     var h2 = '<div class="edline edh"><span></span><span>' + esc(altShort()) + '</span><span>OutSystems</span></div>';
     if (has('team')) out += grp('Delivery team', '<div class="edline"><a class="more" data-go="applications"' + C.tip(tt('Delivery team'), tt('The delivery team\'s cost comes from the applications (their size and team), the delivery times and the hourly rates.')) + '>' + tt('Applications') + ' ›</a></div>');
-    if (k === 'Build' && has('tokens')) out += grp('AI tokens', one(tt('Token spend per application'), inp('tokens.spend', 500, 0)) + one(tt('OutSystems has no AI token cost'), tokFreeBox()) + one(tt('Token saving with OutSystems (%)'), tokSaving(inp('tokens.saving', 1, 0, 100))));
+    if (k === 'Build' && has('tokens')) out += grp('AI tokens', one(tt('Token spend per application'), inp('tokens.spend', 500, 0)) + one(tt('Token saving with OutSystems (%)'), inp('tokens.saving', 1, 0, 100)));
     if (k === 'Operate' && has('tokens')) out += grp('AI tokens', one(tt('After go-live (% of build token spend a year)'), inp('tokens.runPct', 5, 0, 300)));
     if (has('run')) out += grp('Run & maintenance', h2 + two(tt('Break/fix (% of build cost a year)'), inp('maint.fix.alt', 1, 0, 200), inp('maint.fix.os', 1, 0, 200)) + two(tt('Enhancements (% of build cost a year)'), inp('maint.enh.alt', 1, 0, 200), inp('maint.enh.os', 1, 0, 200)));
     if (k === 'Operate' && has('platform')) {   // the licence only: the OutSystems platform and, when chosen, Sentry
@@ -2012,8 +2008,6 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var a = ALT_TYPES.filter(function (x) { return x.id === t.value; })[0];
       state.altName = t.value === 'other' ? '' : (a ? a.name : '');
       buildKey(); recalc();
-    } else if (t.dataset && t.dataset.tokfree !== undefined) {
-      state.tokens.osNone = t.checked; buildInputs(); recalc();
     } else if (t.dataset && t.dataset.setupinc) {
       state.setup.mode = t.checked ? 'included' : 'absorbed'; buildKey(); buildInfra(); recalc();
     } else if (sp === 'osHosting') {
@@ -2547,7 +2541,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function costExtra() {
     var r = res, MS = C.moneyShort, bold = function (s) { return '<b>' + s + '</b>'; };
-    return '<div class="box"><h4>' + tt('AI tokens') + '</h4>' + tt('OutSystems saves {amt} of AI build-token spend over the horizon ({pct}% less than the alternative). Treat the saving as an assumption until measured.', { amt: bold(MS(r.tokenSaving)), pct: state.tokens.osNone ? 100 : state.tokens.saving }) + '</div>' +
+    return '<div class="box"><h4>' + tt('AI tokens') + '</h4>' + tt('OutSystems saves {amt} of AI build-token spend over the horizon ({pct}% less than the alternative). Treat the saving as an assumption until measured.', { amt: bold(MS(r.tokenSaving)), pct: state.tokens.saving }) + '</div>' +
       '<div class="box"><h4>' + tt('Platform vs infrastructure') + '</h4>' + tt('The OutSystems platform and the people it needs compared with the alternative\'s infrastructure, tooling and operating resources: {link}', { link: '<a data-gotab="infrastructure" style="color:var(--text);text-decoration:underline;cursor:pointer">' + tt('see the breakdown') + ' ›</a>' }) + '</div>';
   }
   function timingExtra() {
