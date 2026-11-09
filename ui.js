@@ -179,7 +179,7 @@
       case 'team': return 'costs#rates.*';
       case 'tokens': return g === 1 ? 'costs#tokens.saving' : 'costs#tokens.spend,tokens.runPct';
       case 'run': return g === 1 ? 'costs#maint.*.os' : g === 0 ? 'costs#maint.*.alt' : 'costs#maint.*.*';
-      case 'platform': return g === 0 ? 'infrastructure/cloud#toolItems.*.annual' : 'infrastructure/setup#platform.os,platform.sentry';
+      case 'platform': return g === 0 ? 'infrastructure/cloud#toolItems.*.annual' : 'infrastructure/licence#platform.os,platform.sentry';
       case 'infra': return 'infrastructure/cloud#infraItems.*.annual';
       case 'ops': return 'infrastructure/people#opsItems.*.fte';
       case 'assure': return 'infrastructure/security#assureItems.*.annual,assureItems.*.fte,appAssure.*.annual';
@@ -703,8 +703,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       (onSelf ? '<div class="note">Self-managed: the organisation provides the cloud infrastructure and operating people. The infrastructure lines and operating resources below apply in full to OutSystems (adjust the "still needed with OutSystems" shares if some of it is not needed).</div>' +
         assureCheck() : '') +
       (host === 'paas' ? '<div class="note">' + tt('ODC PaaS: OutSystems provisions and runs the cloud, so there is no infrastructure cost, operating people or setup for you. Services you run whatever the hosting (the infrastructure lines ticked "Also with ODC", such as an identity provider and an APM tool) are counted under licences and tooling instead, at {amt} a year, the same as on the traditional side.', { amt: C.money(E.externalAnnual(state)) }) + '</div>' : '') +
-      (onS ? '<div class="note">Sentry is included in the OutSystems licence uplift above. The cost to match it on the traditional side is below.</div>' : '') +
-      '<div class="sub">One-off setup</div>' +
+      (onS ? '<div class="note">Sentry is included in the OutSystems licence uplift above. The cost to match it on the traditional side is below.</div>' : ''));
+    var osSetup = card(HOSTS[cfgKey()],
       (onSelf ? row('ODC install <i>' + esc(curSym()) + '</i>', inp('setup.os.self', 1000, 0), 'Placeholder (10,000 or equivalent): installing ODC itself is prescriptive and largely automated, so it is cheap. The cloud environment it runs on is separate (below).') +
         row('Cloud environment build needed (% of the cloud-native build)', inp('setup.os.envShare', 5, 0, 100), 'Self-managed ODC runs on a cloud environment the organisation builds: the cluster, network, landing zone, tooling and the team to build it. That is the same kind of work, and most of the cost (mainly labour), as the cloud-native alternative. 100% means the same build; lower it if the self-managed estate is smaller. The build costs are on the right.') +
         '<div class="note" style="margin:0 0 6px">Self-managed setup: <b id="osetup-amt"></b> (the install plus this share of the cloud environment build).</div>'
@@ -716,10 +716,11 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       row('Build: team <i>' + esc(curSym()) + '</i>', inp('setup.alt.build', 10000, 0), 'Team salaries while building the infrastructure environment.') +
       row('Build: tools <i>' + esc(curSym()) + '</i>', inp('setup.alt.tools', 10000, 0), 'Cloud provider, licences, open-source tools and support during the build.') +
       row('Spread over (weeks)', inp('setup.weeks.alt', 1, 1, 156), 'The one-off setup cost is spread evenly over this many weeks from the start.'));
-    var sides = '<div class="sides"><div><h3 class="sec">' + esc(HOSTS[cfgKey()]) + '</h3><div class="cfgwrap one">' + osCard + '</div></div>' +
+    var licSide = '<div class="sides"><div><h3 class="sec">' + esc(HOSTS[cfgKey()]) + '</h3><div class="cfgwrap one">' + osCard + '</div></div></div>';
+    var sides = '<div class="sides"><div><h3 class="sec">' + esc(HOSTS[cfgKey()]) + '</h3><div class="cfgwrap one">' + osSetup + '</div></div>' +
       '<div><h3 class="sec">Traditional cloud native: setup</h3><div class="cfgwrap one">' + altSetup + '</div></div></div>';
     var wideCard = function (h) { return h.replace('<div class="card">', '<div class="card" style="grid-column:1/-1">'); };
-    var tabs = [['compare', 'Compare'], ['box', 'What\'s in the box'], ['cloud', 'Cloud services'], ['people', 'People'], ['setup', 'Licence and setup'], ['security', 'Security'], ['sdlc', 'Phase by phase']];
+    var tabs = [['compare', 'Compare'], ['box', 'What\'s in the box'], ['cloud', 'Cloud services'], ['people', 'People'], ['licence', 'Licence'], ['setup', 'Setup'], ['security', 'Security'], ['sdlc', 'Phase by phase']];
     var chipsHtml = '<div class="steps sticky" id="infrasteps">' + tabs.map(function (t2) { return '<button class="st' + (t2[0] === infraSub ? ' on' : '') + '" data-infra="' + t2[0] + '">' + t2[1] + '</button>'; }).join('') + '</div>';
     var body = '';
     if (infraSub === 'compare') body = '<div class="subhead"></div><h3 class="sec">Choose where OutSystems runs, and whether you need high assurance</h3>' + picker + '<div class="cfgwrap">' + compare + '</div>' + scenarios;
@@ -731,6 +732,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         'The layers under a typical portal: security, data, integration, observability, workflow, authentication, governance, CI/CD and hosting, plus the AI-agent layers. The alternative has to assemble and pay for these; OutSystems provides many of them built in.', state.toolItems, 'Capability layer')) +
       '';
     else if (infraSub === 'people') body = '<div class="cfgwrap">' + wideCard(card('People: key roles', '<div class="note" style="margin:0 0 6px">' + tt('The people who build and run the cloud platform, as ongoing FTE by role. Each role is costed at its hourly rate for the chosen country: change the rates on the {link} tab, which now covers every role used here.', { link: '<a data-gotab="rates" style="color:var(--text);text-decoration:underline;cursor:pointer">' + tt('Rates') + '</a>' }) + ' ' + (E.hostingOf(state) === 'self' ? tt('With ODC self-managed the organisation needs a smaller team for the same estate (the "still needed" shares).') : tt('With ODC the platform is run by OutSystems, so these people are not needed.')) + '</div><div class="subtotal">' + tt('Key roles, traditional: {a} a year · ODC: {o} a year', { a: '<b id="pp-alt"></b>', o: '<b id="pp-os"></b>' }) + '</div>')) + '</div>' + sec('Operating resources', bdOps(state.opsItems));
+    else if (infraSub === 'licence') body = licSide;
     else if (infraSub === 'setup') body = sides;
     else if (infraSub === 'security') body = '<div class="cfgwrap">' + appAssureCard() + assureCard() + '</div>';
     else if (infraSub === 'sdlc') body = sec('Phase by phase', sdlcCards());
