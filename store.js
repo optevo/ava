@@ -415,7 +415,7 @@
     'maint.fix.alt': ['Alternative: break/fix (% of build cost a year)', ''], 'maint.fix.os': ['OutSystems: break/fix (% of build cost a year)', ''],
     'maint.enh.alt': ['Alternative: enhancements (% of build cost a year)', ''], 'maint.enh.os': ['OutSystems: enhancements (% of build cost a year)', ''],
     'tokens.spend': ['Token spend per app', 'Current or projected AI build-token spend per application.'], 'tokens.runPct': ['After go-live (% of build token spend a year)', 'AI tokens keep being used after go-live, for AI-assisted changes and fixes.'],
-    'tokens.saving': ['Token saving (%)', 'The share of token spend OutSystems saves. A placeholder to validate.'],
+    'tokens.saving': ['Token saving (%)', 'The share of token spend OutSystems saves. A placeholder to validate.'], 'tokens.osNone': ['OutSystems has no AI token cost', 'Ticked: OutSystems is taken to have no AI token spend at all, and the saving percentage is not used.'],
     'escal.labour': ['Labour cost change (% / yr)', 'How much the loaded cost of every role rises (or falls) each year.'], 'escal.licence': ['Licence price change (% / yr)', 'How much licences and tooling cost more (or less) each year.'],
     'escal.infra': ['Infrastructure cost change (% / yr)', 'How much cloud infrastructure costs more (or less) each year.']
   };

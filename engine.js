@@ -173,7 +173,7 @@
       /* AI tokens. spend = what the alternative's build uses per application (US$100,000: agent-assisted design, build, test and review across a portfolio, well above the
        * published per-developer averages, since organisations report token costs as a real and growing line); runPct = the yearly spend after go-live as a % of that, for
        * AI-assisted fixes and changes and any model use inside the applications; saving = how much less OutSystems uses (25%: no source, so kept modest). Judgements to replace with measured figures. */
-      tokens: { spend: 100000, runPct: 40, saving: 25 },         // alt build token spend per project; OS % saving
+      tokens: { spend: 100000, runPct: 40, saving: 25, osNone: false },         // alt build token spend per project; OS % saving; osNone: OutSystems has no token cost at all
       value: { cost: 900000, risk: 360000, rev: 1500000 }, // seeds the first application's simple value calculators; after that the calculators hold the figures
       stages: {
         design: { alt: 3, os: 3 },
@@ -977,12 +977,14 @@
   function bauYear(state, ap) {
     var fix = 0, enh = 0;
     approachResult(state, ap).projects.forEach(function (p) { fix += p.teamCost * num(state.maint.fix[ap]) / 100; enh += p.teamCost * num(state.maint.enh[ap]) / 100; });
-    var tokPer = num(state.tokens.spend) * (ap === 'os' ? 1 - clamp(num(state.tokens.saving), 0, 100) / 100 : 1), tok = 0;
+    var tokPer = num(state.tokens.spend) * (ap === 'os' ? osTokenFactor(state) : 1), tok = 0;
     approachResult(state, ap).projects.forEach(function (p) { tok += tokPer * p.scale * num(state.tokens.runPct) / 100; });
     var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap), tooling: toolingAnnual(state, ap), infra: infraAnnual(state, ap), ops: opsWeekCost(state, ap) * WPY, assure: assureAnnual(state, ap) };
     o.app = o.fix + o.enh + o.tokens; o.nonApp = o.platform + o.tooling + o.infra + o.ops + o.assure; o.total = o.app + o.nonApp;
     return o;
   }
+  /* What share of the alternative's token spend OutSystems pays: none when it is marked as having no token cost, otherwise what its saving leaves. */
+  function osTokenFactor(state) { return state.tokens.osNone ? 0 : 1 - clamp(num(state.tokens.saving), 0, 100) / 100; }
   function approachResult(state, ap) {
     var W = Math.max(1, Math.round(num(state.horizon) * WPY));
     var T = expectedTime(state, ap);
@@ -1000,7 +1002,7 @@
     addUniform(cost.setup, 0, setupWeeks(state, ap), setupAmount(state, ap));   // one-off, spread over the setup period
 
     var ramp = Math.max(0, num(state.rampWeeks)), growth = num(state.growth) / 100;
-    var tokenPer = num(state.tokens.spend) * (ap === 'os' ? 1 - clamp(num(state.tokens.saving), 0, 100) / 100 : 1), tokenRunPct = num(state.tokens.runPct) / 100;
+    var tokenPer = num(state.tokens.spend) * (ap === 'os' ? osTokenFactor(state) : 1), tokenRunPct = num(state.tokens.runPct) / 100;
 
     /* Delivery cost: developers x role mix x rates x active weeks, times the rate level of the application's delivery group (the same people deliver
      * whichever approach is used, so a given cost for OutSystems sets the level for the alternative too). */
@@ -1394,7 +1396,7 @@
       var bump = function (w, p, v) { if (v > 0) w[p] = (w[p] || 0) + v; };
       var teamDays = 0;
       Object.keys(dom.phases).forEach(function (k) { var x = dom.phases[k][ap]; addEff(DK[k], 'team', x.days); add(DK[k], 'team', x.cost); teamDays += x.days; });
-      var tokPer = num(s.tokens.spend) * (ap === 'os' ? 1 - clamp(num(s.tokens.saving), 0, 100) / 100 : 1), tokBuild = 0;
+      var tokPer = num(s.tokens.spend) * (ap === 'os' ? osTokenFactor(s) : 1), tokBuild = 0;
       res.projects.forEach(function (p) { if (p.start < res.W) tokBuild += tokPer * p.scale; });
       add('Build', 'tokens', Math.min(sc.tokens, tokBuild)); add('Operate', 'tokens', Math.max(0, sc.tokens - tokBuild));
       add('Evolve', 'run', sc.run);   // looking after the live applications (break/fix and enhancements) is Evolve
