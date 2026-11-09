@@ -946,11 +946,16 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     if (k === 'Build' && has('tokens')) out += grp('AI tokens', one(tt('Token spend per application'), inp('tokens.spend', 500, 0)) + one(tt('Token saving with OutSystems (%)'), inp('tokens.saving', 1, 0, 100)));
     if (k === 'Operate' && has('tokens')) out += grp('AI tokens', one(tt('After go-live (% of build token spend a year)'), inp('tokens.runPct', 5, 0, 300)));
     if (has('run')) out += grp('Run & maintenance', h2 + two(tt('Break/fix (% of build cost a year)'), inp('maint.fix.alt', 1, 0, 200), inp('maint.fix.os', 1, 0, 200)) + two(tt('Enhancements (% of build cost a year)'), inp('maint.enh.alt', 1, 0, 200), inp('maint.enh.os', 1, 0, 200)));
-    if (k === 'Operate' && has('platform')) {
-      var pl = h2 + two(tt('Platform licence, {c} a year', { c: cur }), '<span></span>', inp('platform.os', 5000, 0));
-      if (state.osHosting === 'paas-sentry' || E.hostingOf(state) === 'paas-sentry') pl += two(tt('Additional Sentry licence, {c} a year', { c: cur }), '<span></span>', inp('platform.sentry', 1000, 0));
-      if (!(state.toolItems && state.toolItems.length)) pl += two(tt('Tooling, {c} a year', { c: cur }), inp('platform.alt', 5000, 0), inp('osTooling', 5000, 0));
-      out += grp('Licences and tooling', pl);
+    if (has('platform')) {   // the OutSystems licence, Sentry and always-on services belong to Operate; each tooling line to the phase it is placed in
+      var pl = '', tl = state.toolItems && state.toolItems.length;
+      if (k === 'Operate') {
+        pl += h2 + two(tt('Platform licence, {c} a year', { c: cur }), '<span></span>', inp('platform.os', 5000, 0));
+        if (state.osHosting === 'paas-sentry' || E.hostingOf(state) === 'paas-sentry') pl += two(tt('Additional Sentry licence, {c} a year', { c: cur }), '<span></span>', inp('platform.sentry', 1000, 0));
+        if (!tl) pl += two(tt('Tooling, {c} a year', { c: cur }), inp('platform.alt', 5000, 0), inp('osTooling', 5000, 0));
+        if (E.externalAnnual(state) > 0) pl += one(tt('Services you run with any hosting'), '<a class="more" data-go="infrastructure/cloud#infraItems.*.annual"' + C.tip(tt('Services you run with any hosting'), tt('Cloud service lines ticked "Also with ODC", such as an identity provider and an APM tool, are paid whatever the hosting. They are counted here at the same cost as on the traditional side. Click to edit them under Cloud services.')) + '>' + esc(C.money(E.externalAnnual(state))) + ' ›</a>');
+      }
+      if (tl) state.toolItems.forEach(function (it, i) { if (E.linePhase(it, 'tool') === k) pl += '<div class="edline"><span class="edn" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' + inp('toolItems.' + i + '.annual', 1000, 0) + pctInp('toolItems.' + i + '.os') + '</div>'; });
+      if (pl) out += grp('Licences and tooling', pl);
     }
     if (k === 'Operate' && has('infra')) {
       if (state.infraItems && state.infraItems.length) out += grp('Infrastructure', state.infraItems.map(function (it, i) { return '<div class="edline"><span class="edn" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' + inp('infraItems.' + i + '.annual', 1000, 0) + pctInp('infraItems.' + i + '.os') + '</div>'; }).join(''));

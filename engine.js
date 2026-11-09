@@ -1479,7 +1479,7 @@
   var CAT_INPUTS = {
     tokens: ['tokens.spend', 'tokens.saving', 'tokens.runPct'],
     run: ['maint.fix.alt', 'maint.fix.os', 'maint.enh.alt', 'maint.enh.os'],
-    platform: ['platform.os', 'platform.sentry', 'platform.alt', 'osTooling'],
+    platform: ['platform.os', 'platform.sentry', 'platform.alt', 'osTooling', 'toolItems.0.annual', 'toolItems.0.os'],
     infra: ['infraItems.0.annual', 'infraItems.0.os', 'infra.alt', 'infra.os'],
     assure: ['assureItems.0.annual', 'assureItems.0.os', 'appAssure.0.annual', 'appAssure.0.os'],
     setup: ['setup.alt.hiring', 'setup.alt.build', 'setup.alt.tools', 'setup.os.paas', 'setup.os.self']
