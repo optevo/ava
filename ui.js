@@ -38,7 +38,8 @@
     team: 'The project team (developers plus architects, testers, analysts, project managers and others) while designing, building and fixing. Waiting in review queues is not charged, but it does delay go-live.',
     tokens: 'AI tool and model usage while building.',
     run: 'Changing and maintaining the applications after go-live, as a % of their build cost per year.',
-    platform: 'Licences: the OutSystems platform, or the alternative\'s AI tools and toolchain (coding assistants, code review, scanning, CI/CD, observability, testing).',
+    platform: 'The OutSystems platform licence (and the Sentry security add-on when chosen). The alternative has no platform licence: its tools are under Tooling and services.',
+    tooling: 'Tools and services other than the platform licence: for the alternative, its AI tools and toolchain (coding assistants, code review, scanning, CI/CD, observability, testing). For OutSystems, the share of those it still needs and the services you run whatever the hosting (an identity provider, an APM tool).',
     infra: 'Cloud infrastructure for the applications (hosting, storage, networking, monitoring, environments). It grows as applications go live. OutSystems PaaS includes it.',
     ops: 'People who run and maintain the platform or cloud services (DevOps, site reliability, security operations, patching). Minimal for OutSystems PaaS.',
     assure: 'Security and compliance the approach has to provide itself: intrusion detection, runtime monitoring, malware scanning, log streaming and 24x7 monitoring, plus audit and certification costs (for example SOC 2 Type II) and the people to run them. OutSystems PaaS with Sentry provides these out of the box.',
@@ -179,7 +180,8 @@
       case 'team': return 'costs#rates.*';
       case 'tokens': return g === 1 ? 'costs#tokens.saving' : 'costs#tokens.spend,tokens.runPct';
       case 'run': return g === 1 ? 'costs#maint.*.os' : g === 0 ? 'costs#maint.*.alt' : 'costs#maint.*.*';
-      case 'platform': return g === 0 ? 'infrastructure/cloud#toolItems.*.annual' : 'infrastructure/licence#platform.os,platform.sentry';
+      case 'platform': return 'infrastructure/licence#platform.os,platform.sentry';
+      case 'tooling': return g === 0 ? 'infrastructure/cloud#toolItems.*.annual' : 'infrastructure/cloud#toolItems.*.os,infraItems.*.ext';
       case 'infra': return 'infrastructure/cloud#infraItems.*.annual';
       case 'ops': return 'infrastructure/people#opsItems.*.fte';
       case 'assure': return 'infrastructure/security#assureItems.*.annual,assureItems.*.fte,appAssure.*.annual';
@@ -369,7 +371,7 @@
         'PaaS: OutSystems provisions and runs the cloud, so there is no extra infrastructure or operating people, and no setup. ODC + Sentry (PaaS) adds the Sentry security and compliance package (an extra licence). Self-managed: the organisation runs it on its own cloud, so it pays for infrastructure and some operating people, but setup is prescriptive and cheap and maintenance is simpler than a cloud-native build.') +
       assureCheck() + '<div class="note" id="assure-note" style="margin:2px 0 6px"></div>' +
       '<div class="pair head"><span></span><b>' + altN + '</b><b class="os">OutSystems</b></div>' +
-      pr('Licences and tooling', 'lic', '', '', tt('The yearly licences and tooling each approach needs: for the alternative, the tools it uses on top of the cloud; for OutSystems, the platform licence and anything still needed alongside it.')) + pr('Infrastructure', 'inf', '', '', tt('The yearly cloud infrastructure each approach needs to run the applications. Hover the OutSystems figure to see why it can be zero.')) + pr('Operating people (FTE)', 'ops', '', '', tt('Full-time equivalents of operations people needed to run each approach once the applications are live.')) +
+      pr('Licences', 'lic', '', '', tt('The yearly platform licence: OutSystems only. The alternative has none; its tools are under Tooling and services.')) + pr('Tooling and services', 'tool', '', '', tt('The yearly tools and services each approach needs besides the platform licence: for the alternative, the tools it uses on top of the cloud; for OutSystems, the share it still needs and the services you run whatever the hosting.')) + pr('Infrastructure', 'inf', '', '', tt('The yearly cloud infrastructure each approach needs to run the applications. Hover the OutSystems figure to see why it can be zero.')) + pr('Operating people (FTE)', 'ops', '', '', tt('Full-time equivalents of operations people needed to run each approach once the applications are live.')) +
       '<div class="sub" style="margin-top:8px"' + C.tip('Setup costs', 'One-off costs to get started: for the alternative, hiring and onboarding a cloud team and building the infrastructure environment; for OutSystems, onboarding and training. Absorbed (the default) leaves them out so the comparison focuses on ongoing costs. Include counts them.') + '>Setup costs (one-off)</div>' +
       setupIncLabel(state.setup.mode === 'included') +
       more('infrastructure', 'Line-by-line comparison of tooling, infrastructure and operating people for each approach, the OutSystems hosting options, and setup costs (Platform and infrastructure tab).'));
@@ -702,7 +704,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         '<div class="note" style="margin:0 0 6px">Sentry adds <b id="sentry-amt"></b> a year to the OutSystems licence.</div>' : '') +
       (onSelf ? '<div class="note">Self-managed: the organisation provides the cloud infrastructure and operating people. The infrastructure lines and operating resources below apply in full to OutSystems (adjust the "still needed with OutSystems" shares if some of it is not needed).</div>' +
         assureCheck() : '') +
-      (host === 'paas' ? '<div class="note">' + tt('ODC PaaS: OutSystems provisions and runs the cloud, so there is no infrastructure cost, operating people or setup for you. Services you run whatever the hosting (the infrastructure lines ticked "Also with ODC", such as an identity provider and an APM tool) are counted under licences and tooling instead, at {amt} a year, the same as on the traditional side.', { amt: C.money(E.externalAnnual(state)) }) + '</div>' : '') +
+      (host === 'paas' ? '<div class="note">' + tt('ODC PaaS: OutSystems provisions and runs the cloud, so there is no infrastructure cost, operating people or setup for you. Services you run whatever the hosting (the infrastructure lines ticked "Also with ODC", such as an identity provider and an APM tool) are counted under tooling and services instead, at {amt} a year, the same as on the traditional side.', { amt: C.money(E.externalAnnual(state)) }) + '</div>' : '') +
       (onS ? '<div class="note">Sentry is included in the OutSystems licence uplift above. The cost to match it on the traditional side is below.</div>' : ''));
     var osSetup = card(HOSTS[cfgKey()],
       (onSelf ? row('ODC install <i>' + esc(curSym()) + '</i>', inp('setup.os.self', 1000, 0), 'Placeholder (10,000 or equivalent): installing ODC itself is prescriptive and largely automated, so it is cheap. The cloud environment it runs on is separate (below).') +
@@ -825,7 +827,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
    *   Typical application: Time = the weeks each phase adds to one application; Cost = the average cost of one application (the portfolio's cost in the phase divided by the applications).
    *   Over X years:        Time = the person-days of work (delivery team and operating people); Cost = every cost, in the phase it belongs to. */
   var sdlcScope = 'app', sdlcMeasure = 'time', typicalMonths = 1;   // the typical application is this many months of OutSystems build
-  var RES_CATS = [['team', 'Delivery team'], ['tokens', 'AI tokens'], ['run', 'Run & maintenance'], ['platform', 'Licences and tooling'], ['infra', 'Infrastructure'], ['ops', 'Operating people'], ['assure', 'Security and compliance'], ['setup', 'Setup (one-off)']];
+  var RES_CATS = [['team', 'Delivery team'], ['tokens', 'AI tokens'], ['run', 'Run & maintenance'], ['platform', 'Licences'], ['tooling', 'Tooling and services'], ['infra', 'Infrastructure'], ['ops', 'Operating people'], ['assure', 'Security and compliance'], ['setup', 'Setup (one-off)']];
   function sdlcCp() { return E.costByPhase(state, res, sdlcScope === 'app' ? typicalMonths : 0); }   // the cost of every phase for the scope in view
   function monthsText(n) { return n === 1 ? tt('{n} month', { n: n }) : tt('{n} months', { n: n }); }
   function sdlcValue(ph, ap, cp) {   // the number a bar shows; null when the phase is not on the delivery clock
@@ -946,16 +948,19 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     if (k === 'Build' && has('tokens')) out += grp('AI tokens', one(tt('Token spend per application'), inp('tokens.spend', 500, 0)) + one(tt('Token saving with OutSystems (%)'), inp('tokens.saving', 1, 0, 100)));
     if (k === 'Operate' && has('tokens')) out += grp('AI tokens', one(tt('After go-live (% of build token spend a year)'), inp('tokens.runPct', 5, 0, 300)));
     if (has('run')) out += grp('Run & maintenance', h2 + two(tt('Break/fix (% of build cost a year)'), inp('maint.fix.alt', 1, 0, 200), inp('maint.fix.os', 1, 0, 200)) + two(tt('Enhancements (% of build cost a year)'), inp('maint.enh.alt', 1, 0, 200), inp('maint.enh.os', 1, 0, 200)));
-    if (has('platform')) {   // the OutSystems licence, Sentry and always-on services belong to Operate; each tooling line to the phase it is placed in
-      var pl = '', tl = state.toolItems && state.toolItems.length;
+    if (k === 'Operate' && has('platform')) {   // the licence only: the OutSystems platform and, when chosen, Sentry
+      var pl = h2 + two(tt('Platform licence, {c} a year', { c: cur }), '<span></span>', inp('platform.os', 5000, 0));
+      if (state.osHosting === 'paas-sentry' || E.hostingOf(state) === 'paas-sentry') pl += two(tt('Additional Sentry licence, {c} a year', { c: cur }), '<span></span>', inp('platform.sentry', 1000, 0));
+      out += grp('Licences', pl);
+    }
+    if (has('tooling')) {   // tools and services besides the licence: each tooling line in the phase it is placed in, and the services run with any hosting (Operate)
+      var tl = state.toolItems && state.toolItems.length, tg = '';
       if (k === 'Operate') {
-        pl += h2 + two(tt('Platform licence, {c} a year', { c: cur }), '<span></span>', inp('platform.os', 5000, 0));
-        if (state.osHosting === 'paas-sentry' || E.hostingOf(state) === 'paas-sentry') pl += two(tt('Additional Sentry licence, {c} a year', { c: cur }), '<span></span>', inp('platform.sentry', 1000, 0));
-        if (!tl) pl += two(tt('Tooling, {c} a year', { c: cur }), inp('platform.alt', 5000, 0), inp('osTooling', 5000, 0));
-        if (E.externalAnnual(state) > 0) pl += one(tt('Services you run with any hosting'), '<a class="more" data-go="infrastructure/cloud#infraItems.*.annual"' + C.tip(tt('Services you run with any hosting'), tt('Cloud service lines ticked "Also with ODC", such as an identity provider and an APM tool, are paid whatever the hosting. They are counted here at the same cost as on the traditional side. Click to edit them under Cloud services.')) + '>' + esc(C.money(E.externalAnnual(state))) + ' ›</a>');
+        if (!tl) tg += h2 + two(tt('Tooling, {c} a year', { c: cur }), inp('platform.alt', 5000, 0), inp('osTooling', 5000, 0));
+        if (E.externalAnnual(state) > 0) tg += one(tt('Services you run with any hosting'), '<a class="more" data-go="infrastructure/cloud#infraItems.*.annual"' + C.tip(tt('Services you run with any hosting'), tt('Cloud service lines ticked "Also with ODC", such as an identity provider and an APM tool, are paid whatever the hosting. They are counted here at the same cost as on the traditional side. Click to edit them under Cloud services.')) + '>' + esc(C.money(E.externalAnnual(state))) + ' ›</a>');
       }
-      if (tl) state.toolItems.forEach(function (it, i) { if (E.linePhase(it, 'tool') === k) pl += '<div class="edline"><span class="edn" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' + inp('toolItems.' + i + '.annual', 1000, 0) + pctInp('toolItems.' + i + '.os') + '</div>'; });
-      if (pl) out += grp('Licences and tooling', pl);
+      if (tl) state.toolItems.forEach(function (it, i) { if (E.linePhase(it, 'tool') === k) tg += '<div class="edline"><span class="edn" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' + inp('toolItems.' + i + '.annual', 1000, 0) + pctInp('toolItems.' + i + '.os') + '</div>'; });
+      if (tg) out += grp('Tooling and services', tg);
     }
     if (k === 'Operate' && has('infra')) {
       if (state.infraItems && state.infraItems.length) out += grp('Infrastructure', state.infraItems.map(function (it, i) { return '<div class="edline"><span class="edn" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' + inp('infraItems.' + i + '.annual', 1000, 0) + pctInp('infraItems.' + i + '.os') + '</div>'; }).join(''));
@@ -1049,7 +1054,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       } else h.innerHTML = html;
     });
   }
-  var INFRA_COLORS = { platform: 'var(--g2)', infra: 'var(--t2)', ops: 'var(--p2)', assure: 'var(--m2)', setup: 'var(--o2)' };
+  var INFRA_COLORS = { platform: 'var(--g2)', tooling: 'var(--g1)', infra: 'var(--t2)', ops: 'var(--p2)', assure: 'var(--m2)', setup: 'var(--o2)' };
 
   /* ---- What's in the box: ODC against what Azure, AWS or Google Cloud need for an equivalent, tied to the infrastructure lines ---- */
   var showAllProviders = false;
@@ -1153,11 +1158,11 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var ch = $('infra-chart'), tb = $('infra-table');
     if (!ch) return;
     var M = C.money, fte = function (x) { return Math.round(x * 100) / 100; }, host = E.hostingOf(state), osName = HOSTS[cfgKey()], altName = esc(altShort());
-    var a = { platform: E.licenceAnnual(state, 'alt'), infra: E.infraAnnual(state, 'alt'), ops: E.opsWeekCost(state, 'alt') * 52, assure: E.assureAnnual(state, 'alt') };
-    var o = { platform: E.licenceAnnual(state, 'os'), infra: E.infraAnnual(state, 'os'), ops: E.opsWeekCost(state, 'os') * 52, assure: E.assureAnnual(state, 'os') };
-    var up = E.sentryUplift(state), ta = a.platform + a.infra + a.ops + a.assure, to = o.platform + o.infra + o.ops + o.assure;
+    var a = { platform: E.licenceAnnual(state, 'alt'), tooling: E.toolingAnnual(state, 'alt'), infra: E.infraAnnual(state, 'alt'), ops: E.opsWeekCost(state, 'alt') * 52, assure: E.assureAnnual(state, 'alt') };
+    var o = { platform: E.licenceAnnual(state, 'os'), tooling: E.toolingAnnual(state, 'os'), infra: E.infraAnnual(state, 'os'), ops: E.opsWeekCost(state, 'os') * 52, assure: E.assureAnnual(state, 'os') };
+    var up = E.sentryUplift(state), ta = a.platform + a.tooling + a.infra + a.ops + a.assure, to = o.platform + o.tooling + o.infra + o.ops + o.assure;
     var sa = E.setupAmount(state, 'alt'), so = E.setupAmount(state, 'os'), inc = state.setup.mode === 'included';
-    var cats = [{ key: 'platform', label: 'Licences and tooling', color: INFRA_COLORS.platform, help: COST_HELP.platform, go: function (g) { return costGo('platform', g); } }, { key: 'infra', label: 'Infrastructure', color: INFRA_COLORS.infra, help: COST_HELP.infra, go: function () { return costGo('infra'); } },
+    var cats = [{ key: 'platform', label: 'Licences', color: INFRA_COLORS.platform, help: COST_HELP.platform, go: function () { return costGo('platform', 1); } }, { key: 'tooling', label: 'Tooling and services', color: INFRA_COLORS.tooling, help: COST_HELP.tooling, go: function (g) { return costGo('tooling', g); } }, { key: 'infra', label: 'Infrastructure', color: INFRA_COLORS.infra, help: COST_HELP.infra, go: function () { return costGo('infra'); } },
       { key: 'ops', label: 'Operating people', color: INFRA_COLORS.ops, help: COST_HELP.ops, go: function () { return costGo('ops'); } }, { key: 'assure', label: 'Security and compliance', color: INFRA_COLORS.assure, help: COST_HELP.assure, go: function () { return costGo('assure'); } }];
     var ca = a, co = o;
     if (inc) {   // ticked: the one-off setup is shown as its own segment, on top of the ongoing yearly cost
@@ -1166,7 +1171,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     }
     /* The scale is the same with and without high assurance (and with or without Sentry): the tallest bar either way, so ticking it only changes the bars. */
     var hcs = E.hostingCompare(state), std = host === 'self' ? 'self' : 'paas', hiR = host === 'self' ? 'diy' : 'sentry';
-    var altLo = hcs.alt.licences + hcs.alt.infra + hcs.alt.ops, altHi = altLo + hcs[hiR].altAssure;
+    var altLo = hcs.alt.licences + hcs.alt.tooling + hcs.alt.infra + hcs.alt.ops, altHi = altLo + hcs[hiR].altAssure;
     var scaleMax = Math.max(altLo, altHi, hcs[std].ongoing, hcs[hiR].ongoing) + (inc ? Math.max(sa, so) : 0);
     ch.innerHTML = C.stacked({
       cats: cats, scaleMax: scaleMax,
@@ -1174,7 +1179,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     });
     var row = function (label, x, y, cls) { return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td>' + (typeof x === 'number' ? M(x) : x) + '</td><td>' + (typeof y === 'number' ? M(y) : y) + '</td><td>' + (typeof x === 'number' && typeof y === 'number' ? M(x - y) : '') + '</td></tr>'; };
     tb.innerHTML = '<table class="cmp"><tr><th></th><th>' + altName + '</th><th class="os">' + esc(osName) + '</th><th>Difference</th></tr>' +
-      row(host === 'paas-sentry' ? tt('Licences and tooling (incl. Sentry)') : tt('Licences and tooling'), a.platform, o.platform) + (host === 'paas-sentry' ? row('  ' + tt('of which Sentry licence'), '–', up) : '') +
+      row(host === 'paas-sentry' ? tt('Licences (incl. Sentry)') : tt('Licences'), a.platform, o.platform) + (host === 'paas-sentry' ? row('  ' + tt('of which Sentry licence'), '–', up) : '') +
+      row(tt('Tooling and services'), a.tooling, o.tooling) +
       row(tt('Infrastructure'), a.infra, o.infra) +
       row(tt('Operating people ({a} vs {o} FTE)', { a: fte(E.opsFteTotal(state, 'alt')), o: fte(E.opsFteTotal(state, 'os')) }), a.ops, o.ops) +
       (a.assure || o.assure ? row(host === 'paas-sentry' ? tt('Security and compliance (to match Sentry)') : tt('Security and compliance'), a.assure, o.assure) : '') +
@@ -1191,10 +1197,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
 
   function updateBreakdownTotals() {
     var M = C.money, MS = C.moneyShort, set = function (id, v) { var e = $(id); if (e) e.textContent = v; }, r2 = function (x) { return Math.round(x * 100) / 100; };
-    var altInfra = E.infraAnnual(state, 'alt'), osInfra = E.infraAnnual(state, 'os'), altLic = E.licenceAnnual(state, 'alt'), osLic = E.licenceAnnual(state, 'os');
+    var altInfra = E.infraAnnual(state, 'alt'), osInfra = E.infraAnnual(state, 'os'), altLic = E.licenceAnnual(state, 'alt'), osLic = E.licenceAnnual(state, 'os'), altTool = E.toolingAnnual(state, 'alt'), osTool = E.toolingAnnual(state, 'os');
     set('bd-infra-t', M(altInfra)); set('bd-infra-t0', M(altInfra)); set('bd-infra-ot', M(osInfra)); set('bd-infra-ot0', M(osInfra));
-    set('bd-tools-t', M(altLic)); set('bd-tools-t0', M(altLic));
-    var osTools = osLic - Number(state.platform.os) - E.sentryUplift(state); set('bd-tools-ot', M(osTools)); set('bd-tools-ot0', M(osTools));
+    set('bd-tools-t', M(altTool)); set('bd-tools-t0', M(altTool));
+    var osTools = osTool; set('bd-tools-ot', M(osTools)); set('bd-tools-ot0', M(osTools));
     set('bd-ops-t', r2(E.opsFteTotal(state, 'alt'))); set('bd-ops-t0', r2(E.opsFteTotal(state, 'alt'))); set('bd-ops-ot', r2(E.opsFteTotal(state, 'os'))); set('bd-ops-ot0', r2(E.opsFteTotal(state, 'os')));
     set('bd-ops-tc', M(E.opsWeekCost(state, 'alt') * 52)); set('bd-ops-otc', M(E.opsWeekCost(state, 'os') * 52));
     var os = function (it) { var x = parseFloat(it.os); return isFinite(x) ? Math.min(1, Math.max(0, x)) : 1; }, hm = state.osHosting === 'self' ? 1 : 0;
@@ -1232,7 +1238,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     (state.appAssure || []).forEach(function (it, i) { set('aa-os' + i, M(Number(it.annual) * (Math.min(1, Math.max(0, parseFloat(it.os) || 0))))); });
     set('aa-tot-alt', M(E.appAssureAnnual(state, 'alt'))); set('aa-tot-os', M(E.appAssureAnnual(state, 'os')));
     // main page summary of both sides
-    set('kp-lic-alt', MS(altLic)); set('kp-lic-os', MS(osLic)); set('kp-inf-alt', MS(altInfra)); set('kp-inf-os', MS(osInfra));
+    set('kp-lic-alt', MS(altLic)); set('kp-lic-os', MS(osLic)); set('kp-tool-alt', MS(altTool)); set('kp-tool-os', MS(osTool)); set('kp-inf-alt', MS(altInfra)); set('kp-inf-os', MS(osInfra));
     var infTip = $('kp-inf-os'); if (infTip) infTip.setAttribute('data-tip', tt('Infrastructure') + '::' + (E.hostingOf(state) === 'self' ? tt('The organisation runs OutSystems on its own cloud, so this is its infrastructure cost.') : tt('Included in PaaS: OutSystems runs the cloud, so there is no separate infrastructure cost.')));
     set('kp-ops-alt', r2(E.opsFteTotal(state, 'alt'))); set('kp-ops-os', r2(E.opsFteTotal(state, 'os')));
     // what 1 developer is equal to: people and cost per developer for each approach
@@ -2131,7 +2137,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function svgCost() {
     if (cbBasis === 'bau') return svgBau();
     var r = res, alt = altShort();
-    var catColors = { team: 'var(--b3)', tokens: 'var(--o1)', run: 'var(--b2)', platform: 'var(--g2)', infra: 'var(--t2)', ops: 'var(--p2)', assure: 'var(--m2)', setup: 'var(--o2)' };
+    var catColors = { team: 'var(--b3)', tokens: 'var(--o1)', run: 'var(--b2)', platform: 'var(--g2)', tooling: 'var(--g1)', infra: 'var(--t2)', ops: 'var(--p2)', assure: 'var(--m2)', setup: 'var(--o2)' };
     var benColors = { cost: 'var(--t3)', risk: 'var(--t2)', rev: 'var(--t1)' };
     var benHelp = 'Earned only once an application is live and its benefit has ramped up. The annual value is the same for both approaches, but the one that goes live sooner earns more of it inside the horizon.';
     var cats = E.COST_CATS.map(function (c) { return { key: c.key, label: c.label, color: catColors[c.key], help: COST_HELP[c.key], go: function (gi) { return costGo(c.key, gi >= 2 ? 1 : 0); } }; })
@@ -2164,7 +2170,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var appCats = [{ key: 'fix', label: tt('Break/fix'), color: 'var(--b2)', help: tt('Fixing faults in the applications once they are live, as a share of their build cost each year.'), go: function (gi) { return costGo('run', gi >= 1 ? 1 : 0); } },
       { key: 'enh', label: tt('Enhancements'), color: 'var(--b1)', help: tt('Making the changes the business asks for once the applications are live, as a share of their build cost each year.'), go: function (gi) { return costGo('run', gi >= 1 ? 1 : 0); } }]
       .concat([{ key: 'tokens', label: tt('AI tokens'), color: 'var(--o1)', help: COST_HELP.tokens, go: function (gi) { return costGo('tokens', gi >= 1 ? 1 : 0); } }]);
-    var platCats = ['platform', 'infra', 'ops', 'assure'].map(function (k) { return { key: k, label: lab(k), color: { platform: 'var(--g2)', infra: 'var(--t2)', ops: 'var(--p2)', assure: 'var(--m2)' }[k], help: COST_HELP[k], go: function (gi) { return costGo(k, gi >= 1 ? 1 : 0); } }; });
+    var platCats = ['platform', 'tooling', 'infra', 'ops', 'assure'].map(function (k) { return { key: k, label: lab(k), color: { platform: 'var(--g2)', tooling: 'var(--g1)', infra: 'var(--t2)', ops: 'var(--p2)', assure: 'var(--m2)' }[k], help: COST_HELP[k], go: function (gi) { return costGo(k, gi >= 1 ? 1 : 0); } }; });
     var cats = bauPart === 'app' ? appCats : bauPart === 'platform' ? platCats : appCats.concat(platCats);
     return C.stacked({ cats: cats, shareOf: 'ongoing cost per year', groups: [{ label: 'Costs', label2: altShort(), values: d.alt }, { label: 'Costs', label2: 'OutSystems', values: d.os }], label: tt('Ongoing cost per year'), height: 330 });
   }
@@ -2178,7 +2184,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     };
     var grp = function (t) { return '<tr class="grp"><td colspan="4">' + esc(t) + '</td></tr>'; }, lab = function (k) { return tt(E.COST_CATS.filter(function (c) { return c.key === k; })[0].label); };
     var appRows = grp(tt('Looking after the applications')) + line(tt('Break/fix'), d.alt.fix, d.os.fix, costGo('run')) + line(tt('Enhancements'), d.alt.enh, d.os.enh, costGo('run')) + line(tt('AI tokens'), d.alt.tokens, d.os.tokens, costGo('tokens')) + line(tt('Subtotal'), d.alt.app, d.os.app, null, 'tot');
-    var platRows = grp(tt('Running the platform')) + line(lab('platform'), d.alt.platform, d.os.platform, costGo('platform', 1)) + line(lab('infra'), d.alt.infra, d.os.infra, costGo('infra')) + line(lab('ops'), d.alt.ops, d.os.ops, costGo('ops')) + line(lab('assure'), d.alt.assure, d.os.assure, costGo('assure')) + line(tt('Subtotal'), d.alt.nonApp, d.os.nonApp, null, 'tot');
+    var platRows = grp(tt('Running the platform')) + line(lab('platform'), d.alt.platform, d.os.platform, costGo('platform', 1)) + line(lab('tooling'), d.alt.tooling, d.os.tooling, costGo('tooling', 1)) + line(lab('infra'), d.alt.infra, d.os.infra, costGo('infra')) + line(lab('ops'), d.alt.ops, d.os.ops, costGo('ops')) + line(lab('assure'), d.alt.assure, d.os.assure, costGo('assure')) + line(tt('Subtotal'), d.alt.nonApp, d.os.nonApp, null, 'tot');
     var part = bauPart === 'app' ? { a: d.alt.app, o: d.os.app } : bauPart === 'platform' ? { a: d.alt.nonApp, o: d.os.nonApp } : { a: d.alt.total, o: d.os.total };
     var rows = (bauPart === 'platform' ? '' : appRows) + (bauPart === 'app' ? '' : platRows) + grp(tt('Result')) + line(tt('Ongoing cost per year'), part.a, part.o, null, 'tot');
     var head = '<tr><th></th><th>' + alt + '</th><th>OutSystems</th><th>' + tt('OutSystems advantage') + '</th></tr>';
@@ -2201,13 +2207,13 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     E.DRIVERS.forEach(function (d) { rows += line(d.label, AV[d.key], OV[d.key], true, valueGo(d.key)); });
     var dk = E.DRIVERS.map(function (d) { return d.key; }), aVal = sum(AV, dk), oVal = sum(OV, dk);
     rows += line('Total benefits', aVal, oVal, true, null, 'tot');
-    var groups = [['Costs: delivering the applications', ['team', 'tokens', 'run']], ['Costs: the platform and its operation', ['platform', 'infra', 'ops', 'assure', 'setup']]], aCost = 0, oCost = 0;
+    var groups = [['Costs: delivering the applications', ['team', 'tokens', 'run']], ['Costs: the platform and its operation', ['platform', 'tooling', 'infra', 'ops', 'assure', 'setup']]], aCost = 0, oCost = 0;
     groups.forEach(function (g) {
       rows += grp(g[0]);
       g[1].forEach(function (k) {
         var cat = E.COST_CATS.filter(function (c) { return c.key === k; })[0];
         if (Math.abs(AC[k]) + Math.abs(OC[k]) < 0.5) return;   // a line that is nothing for both is left out
-        rows += line(cat.label, AC[k], OC[k], false, k === 'platform' ? costGo(k, 1) : costGo(k));
+        rows += line(cat.label, AC[k], OC[k], false, k === 'platform' || k === 'tooling' ? costGo(k, 1) : costGo(k));
       });
       var sa = sum(AC, g[1]), so = sum(OC, g[1]); aCost += sa; oCost += so;
       rows += line('Subtotal', sa, so, false, null, 'tot');

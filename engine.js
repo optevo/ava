@@ -21,6 +21,7 @@
     { key: 'tokens', label: 'AI tokens' },
     { key: 'run', label: 'Run & maintenance' },
     { key: 'platform', label: 'Licences' },
+    { key: 'tooling', label: 'Tooling and services' },
     { key: 'infra', label: 'Infrastructure' },
     { key: 'ops', label: 'Operating people' },
     { key: 'assure', label: 'Security & compliance' },
@@ -787,20 +788,24 @@
     if (hasItems(state.infraItems)) {
       if (ap === 'alt') return sumAnnual(state.infraItems);
       if (selfHosted(state)) return sumOs(state.infraItems);
-      return 0;   // OutSystems PaaS: OutSystems provisions and runs the cloud, so the customer has no infrastructure cost (external services they run anyway are in the licences and tooling, see externalAnnual)
+      return 0;   // OutSystems PaaS: OutSystems provisions and runs the cloud, so the customer has no infrastructure cost (external services they run anyway are in the tooling and services, see externalAnnual)
     }
     if (ap === 'os' && !selfHosted(state)) return 0;
     return num(state.infra[ap]);
   }
   /* Licences per year: OutSystems = the platform licence plus any tooling still needed; the alternative = its AI tools and toolchain. */
   /* Services the organisation runs whatever the hosting (an identity provider, an APM tool: the infrastructure lines ticked "Also with ODC"). With self-managed ODC
-   * they are part of the infrastructure; with PaaS there is no infrastructure, so they are counted with the licences and tooling, at the same cost as the alternative's. */
+   * they are part of the infrastructure; with PaaS there is no infrastructure, so they are counted with the tooling and services, at the same cost as the alternative's. */
   function externalAnnual(state) {
     return hasItems(state.infraItems) && !selfHosted(state) ? sumOs(state.infraItems.filter(function (it) { return it.ext; })) : 0;
   }
-  function licenceAnnual(state, ap) {
+  function licenceAnnual(state, ap) {   // the OutSystems licence (and the Sentry uplift) only: the alternative has no platform licence, its tools are tooling
+    return ap === 'alt' ? 0 : num(state.platform.os) + sentryUplift(state);
+  }
+  /* Tooling and services per year, kept apart from the licence: the alternative's AI tools and toolchain; for OutSystems the share of those it still needs, and the services run whatever the hosting. */
+  function toolingAnnual(state, ap) {
     if (ap === 'alt') return hasItems(state.toolItems) ? sumAnnual(state.toolItems) : num(state.platform.alt);
-    return num(state.platform.os) + sentryUplift(state) + (hasItems(state.toolItems) ? sumOs(state.toolItems) : num(state.osTooling)) + externalAnnual(state);
+    return (hasItems(state.toolItems) ? sumOs(state.toolItems) : num(state.osTooling)) + externalAnnual(state);
   }
   /* People who run the platform or cloud services, per week at full run. Each line is costed at its own role's rate; OutSystems needs only its share. */
   function opsWeekCost(state, ap, raw) {
@@ -968,14 +973,14 @@
   /* The yearly maintenance rate, % of build cost: break/fix plus enhancement. */
   function maintPct(state, ap) { return num(state.maint.fix[ap]) + num(state.maint.enh[ap]); }
   /* The steady-state cost of a year once every application is live (BAU): looking after the applications (break/fix and enhancement) and running the platform
-   * (licences and tooling, infrastructure, operating people, security and compliance). Delivery, AI build tokens, one-off setup and the timing of value are left out. */
+   * (licences, tooling and services, infrastructure, operating people, security and compliance). Delivery, AI build tokens, one-off setup and the timing of value are left out. */
   function bauYear(state, ap) {
     var fix = 0, enh = 0;
     approachResult(state, ap).projects.forEach(function (p) { fix += p.teamCost * num(state.maint.fix[ap]) / 100; enh += p.teamCost * num(state.maint.enh[ap]) / 100; });
     var tokPer = num(state.tokens.spend) * (ap === 'os' ? 1 - clamp(num(state.tokens.saving), 0, 100) / 100 : 1), tok = 0;
     approachResult(state, ap).projects.forEach(function (p) { tok += tokPer * p.scale * num(state.tokens.runPct) / 100; });
-    var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap), infra: infraAnnual(state, ap), ops: opsWeekCost(state, ap) * WPY, assure: assureAnnual(state, ap) };
-    o.app = o.fix + o.enh + o.tokens; o.nonApp = o.platform + o.infra + o.ops + o.assure; o.total = o.app + o.nonApp;
+    var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap), tooling: toolingAnnual(state, ap), infra: infraAnnual(state, ap), ops: opsWeekCost(state, ap) * WPY, assure: assureAnnual(state, ap) };
+    o.app = o.fix + o.enh + o.tokens; o.nonApp = o.platform + o.tooling + o.infra + o.ops + o.assure; o.total = o.app + o.nonApp;
     return o;
   }
   function approachResult(state, ap) {
@@ -991,7 +996,7 @@
     var yr = function (week) { return Math.floor(week / WPY); };
     /* Licences are charged once a year, in advance, from the start: a full year's licence in week 0 and on each anniversary (so the cumulative lines step down every year). */
     var licW = licenceStartWeek(state);
-    for (k = 0; k < W; k++) cost.platform[k] = k >= licW && (k - licW) % WPY === 0 ? licenceAnnual(ys(yr(k)), ap) : 0;
+    for (k = 0; k < W; k++) { var licDue = k >= licW && (k - licW) % WPY === 0; cost.platform[k] = licDue ? licenceAnnual(ys(yr(k)), ap) : 0; cost.tooling[k] = licDue ? toolingAnnual(ys(yr(k)), ap) : 0; }   // both are paid yearly, in advance
     addUniform(cost.setup, 0, setupWeeks(state, ap), setupAmount(state, ap));   // one-off, spread over the setup period
 
     var ramp = Math.max(0, num(state.rampWeeks)), growth = num(state.growth) / 100;
@@ -1302,7 +1307,7 @@
   function hostingCompare(state) {
     var out = {}, mk = function (s, ap, setupRaw) {
       var lic = licenceAnnual(s, ap), up = ap === 'os' ? sentryUplift(s) : 0;
-      return { licences: lic, sentry: up, infra: infraAnnual(s, ap), ops: opsWeekCost(s, ap) * WPY, opsFte: opsFteTotal(s, ap), assure: assureAnnual(s, ap), setup: setupRaw };
+      return { licences: lic, tooling: toolingAnnual(s, ap), sentry: up, infra: infraAnnual(s, ap), ops: opsWeekCost(s, ap) * WPY, opsFte: opsFteTotal(s, ap), assure: assureAnnual(s, ap), setup: setupRaw };
     };
     var s0 = JSON.parse(JSON.stringify(state)); out.alt = mk(s0, 'alt', num(state.setup.alt.hiring) + num(state.setup.alt.build) + num(state.setup.alt.tools));
     /* Each route is shown with the security the organisation needs: the plain routes with none required, PaaS + Sentry and self-managed + assured with high assurance required. */
@@ -1311,7 +1316,7 @@
       out[r[0]] = mk(s, 'os', osSetupFor(state, r[1])); out[r[0]].advantage = run(s).advantage;
       out[r[0]].altAssure = assureAnnual(s, 'alt');
     });
-    ['alt', 'paas', 'sentry', 'self', 'diy'].forEach(function (k) { out[k].ongoing = out[k].licences + out[k].infra + out[k].ops + out[k].assure; });
+    ['alt', 'paas', 'sentry', 'self', 'diy'].forEach(function (k) { out[k].ongoing = out[k].licences + out[k].tooling + out[k].infra + out[k].ops + out[k].assure; });
     return out;
   }
 
@@ -1397,8 +1402,9 @@
       var wl = {};
       if (hasItems(s.toolItems)) s.toolItems.forEach(function (it) { bump(wl, linePhase(it, 'tool'), num(it.annual) * (ap === 'os' ? osShare(it) : 1)); });
       else bump(wl, 'Operate', ap === 'alt' ? num(s.platform.alt) : num(s.osTooling));
-      if (ap === 'os') bump(wl, 'Operate', num(s.platform.os) + sentryUplift(s) + externalAnnual(s));
-      spread('platform', sc.platform, wl, 'Operate');
+      if (ap === 'os') bump(wl, 'Operate', externalAnnual(s));
+      spread('tooling', sc.tooling, wl, 'Operate');
+      add('Operate', 'platform', sc.platform);   // the OutSystems licence is where the platform is run
       add('Operate', 'infra', sc.infra);
       var wo = {}, wf = {};
       if (hasItems(s.opsItems)) s.opsItems.forEach(function (it) {
@@ -1479,7 +1485,8 @@
   var CAT_INPUTS = {
     tokens: ['tokens.spend', 'tokens.saving', 'tokens.runPct'],
     run: ['maint.fix.alt', 'maint.fix.os', 'maint.enh.alt', 'maint.enh.os'],
-    platform: ['platform.os', 'platform.sentry', 'platform.alt', 'osTooling', 'toolItems.0.annual', 'toolItems.0.os'],
+    platform: ['platform.os', 'platform.sentry'],
+    tooling: ['platform.alt', 'osTooling', 'toolItems.0.annual', 'toolItems.0.os'],
     infra: ['infraItems.0.annual', 'infraItems.0.os', 'infra.alt', 'infra.os'],
     assure: ['assureItems.0.annual', 'assureItems.0.os', 'appAssure.0.annual', 'appAssure.0.os'],
     setup: ['setup.alt.hiring', 'setup.alt.build', 'setup.alt.tools', 'setup.os.paas', 'setup.os.self']
@@ -1488,7 +1495,7 @@
   var api = {
     WPY: WPY, CAT_INPUTS: CAT_INPUTS, costByPhase: costByPhase, typicalTime: typicalTime, typicalScale: typicalScale, linePhase: linePhase, sensitivity: sensitivity, mustBeTrue: mustBeTrue, breakEvenLicence: breakEvenLicence, roleBreakdown: roleBreakdown, domainBreakdown: domainBreakdown, hostingCompare: hostingCompare, assureAnnual: assureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, assuranceOn: assuranceOn, hostingOf: hostingOf, sentryUplift: sentryUplift, CASES: CASES, casesOf: casesOf, caseOf: caseOf, caseTable: caseTable, effectiveState: effectiveState, DOMAINS: DOMAINS, PHASES: PHASES, domainDefaults: domainDefaults, DRIVERS: DRIVERS, COST_CATS: COST_CATS,
     defaultState: defaultState, passProb: passProb, ROLES: ROLES, ALL_ROLES: ALL_ROLES, mixCost: mixCost, peoplePerDev: peoplePerDev, devsFor: devsFor, weekCost: weekCost,
-    sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
+    sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, toolingAnnual: toolingAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
     expandBreakdown: expandBreakdown, collapseBreakdown: collapseBreakdown, expectedTime: expectedTime,
     parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, skillOf: skillOf, levelOf: levelOf, qualityImpact: qualityImpact,
     projectList: projectList, ensureList: ensureList, bauYear: bauYear, maintPct: maintPct, mapShare: mapShare, applyMapShares: applyMapShares, ensureGroups: ensureGroups, groupFactors: groupFactors, migrateDefaults: migrateDefaults, factorAt: factorAt, hasPattern: hasPattern, yearState: yearState, buildValueYear: buildValueYear, overlapping: overlapping, LINE_HOURS: LINE_HOURS, seedLine: seedLine, seedDefaults: seedDefaults, applyOrgDefaults: applyOrgDefaults, INDUSTRIES: INDUSTRIES, matchTypes: matchTypes, USE_ALIASES: USE_ALIASES, ORG_TYPICAL: ORG_TYPICAL, roundSig: roundSig, USE_CASES: USE_CASES, avgDevs: avgDevs, isSimple: isSimple, simpleIndex: simpleIndex, annualOf: annualOf, monthsMode: monthsMode, deriveMonths: deriveMonths, migrateMonths: migrateMonths, LINE_MONEY: LINE_MONEY, newLine: newLine, lineValue: lineValue, hasBuild: hasBuild, buildValue: buildValue, expandProjects: expandProjects,
