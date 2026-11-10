@@ -707,6 +707,20 @@
     var lv = ((state.skill || {}).levels || {})[key], def = defaultState().skill.levels[key] || { pace: 0, discount: 0, enable: 0 };
     return legacyLevel(lv, def);
   }
+  /* The portfolio's experience level, shared by every delivery team while they are all on the same level (nothing is stored: when the teams differ it is simply not one value). */
+  function teamExperience(state) {
+    var gs = ensureGroups(state), first = gs[0];
+    for (var i = 1; i < gs.length; i++) {
+      if (gs[i].skill !== first.skill) return null;
+      if (first.skill === 'custom' && JSON.stringify(gs[i].custom) !== JSON.stringify(first.custom)) return null;
+    }
+    return first.skill;
+  }
+  function setTeamExperience(state, level) {   // only while the teams agree; developer-based teams are the ones it affects
+    if (teamExperience(state) === null || (level !== 'experienced' && level !== 'mixed' && level !== 'newer')) return false;
+    ensureGroups(state).forEach(function (g) { g.skill = level; delete g.custom; });
+    return true;
+  }
   function customOf(state, g) {   // a team's own figures, started from the level it was on
     var base = levelOf(state, g.skill === 'newer' ? 'newer' : 'mixed');
     return legacyLevel(g.custom, base);
@@ -1497,7 +1511,7 @@
     defaultState: defaultState, passProb: passProb, ROLES: ROLES, ALL_ROLES: ALL_ROLES, mixCost: mixCost, peoplePerDev: peoplePerDev, devsFor: devsFor, weekCost: weekCost,
     sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, toolingAnnual: toolingAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
     expandBreakdown: expandBreakdown, collapseBreakdown: collapseBreakdown, expectedTime: expectedTime,
-    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, skillOf: skillOf, levelOf: levelOf, qualityImpact: qualityImpact,
+    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, skillOf: skillOf, levelOf: levelOf, teamExperience: teamExperience, setTeamExperience: setTeamExperience, qualityImpact: qualityImpact,
     projectList: projectList, ensureList: ensureList, bauYear: bauYear, maintPct: maintPct, mapShare: mapShare, applyMapShares: applyMapShares, ensureGroups: ensureGroups, groupFactors: groupFactors, migrateDefaults: migrateDefaults, factorAt: factorAt, hasPattern: hasPattern, yearState: yearState, buildValueYear: buildValueYear, overlapping: overlapping, LINE_HOURS: LINE_HOURS, seedLine: seedLine, seedDefaults: seedDefaults, applyOrgDefaults: applyOrgDefaults, INDUSTRIES: INDUSTRIES, matchTypes: matchTypes, USE_ALIASES: USE_ALIASES, ORG_TYPICAL: ORG_TYPICAL, roundSig: roundSig, USE_CASES: USE_CASES, avgDevs: avgDevs, isSimple: isSimple, simpleIndex: simpleIndex, annualOf: annualOf, monthsMode: monthsMode, deriveMonths: deriveMonths, migrateMonths: migrateMonths, LINE_MONEY: LINE_MONEY, newLine: newLine, lineValue: lineValue, hasBuild: hasBuild, buildValue: buildValue, expandProjects: expandProjects,
     schedule: schedule, approachResult: approachResult, run: run
   };

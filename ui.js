@@ -330,6 +330,13 @@
         ? row('Developers', inp('projectList.0.devs', 1, 1, 200), 'OutSystems developers. The architects, testers, analysts, project managers and others they imply come from the role mix, at the country\'s rate for each role. The alternative\'s team is worked out from this.', 'projectList.0.devs')
         : row('Developers', '<div class="ro locked" id="dv-ro" data-go="applications#projectList.*.devs"' + rollTip('Each application has its own team size; this is their average, weighted by months.') + '>' + f1(E.avgDevs(state)) + '</div>',
           'OutSystems developers on an application. Each application has its own number on the Applications tab.')) +
+      (quote ? '' : (function () {   // one experience level for the portfolio, linked to the delivery teams until they differ
+        var ex = E.teamExperience(state), opts = SKILL_LEVELS.map(function (x) { return '<option value="' + x[0] + '"' + (ex === x[0] ? ' selected' : '') + '>' + esc(tt(x[1])) + '</option>'; }).join('');
+        if (ex === 'custom') opts += '<option value="custom" selected disabled>' + esc(tt('Custom')) + '</option>';
+        if (ex === null) opts += '<option value="" selected disabled>' + esc(tt('Different for each team')) + '</option>';
+        return row('Developers\' experience', '<select data-gexpall="1"' + (ex === null || ex === 'custom' ? ' disabled' : '') + '>' + opts + '</select>',
+          'How experienced the developers are. Less experienced developers are paid less but take longer, and need training with OutSystems. This applies to every delivery team while they share one level; once the teams differ it shows that and is set for each team on the Applications tab.');
+      })()) +
       (multiG
         ? '<div class="note" data-go="applications"><a class="more">' + tt('Delivery cost and rate levels are set for each delivery team (Applications tab).') + '</a></div>'
         : (quote
@@ -849,8 +856,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     });
     var one = sdlcScope === 'app', head = days ? (one ? tt('About {n} person-days of work to reach production.', { n: Math.round(v).toLocaleString() }) : tt('About {n} person-days of work over {yrs} years.', { n: Math.round(v).toLocaleString(), yrs: yrs }))
       : one ? tt('About {amt} to reach production, from the costs listed below.', { amt: M(v) }) : tt('About {amt} over {yrs} years, from every cost listed below.', { amt: M(v), yrs: yrs });
-    var tip = C.tip(ph.key + ' · ' + tt(who), head + '\n\n' + lines.join('\n') + (days ? '\n\n' + tt('Licences, tooling, cloud and AI tokens are money only: see Cost.') : '') + '\n\n' + tt('Change the figures in Cost by phase below.'));
-    return '<span class="tm"' + tip + '><i style="width:' + Math.max(2, v / Math.max(1e-9, maxR) * 100).toFixed(1) + '%;background:var(--' + (ap === 'alt' ? 'alt' : 'os') + ')"></i><b>' + sdlcText(v) + '</b></span>';
+    var top = null; RES_CATS.forEach(function (c) { var amt = (days ? r.eff[c[0]] : r.cats[c[0]]) || 0; if (amt > 0 && (!top || amt > top.amt)) top = { cat: c[0], amt: amt }; });   // the biggest part of the bar: its inputs are where a click goes
+    var go = days ? phaseGo(ph, ap) : (top && costGo(top.cat, ap === 'alt' ? 0 : 1)) || phaseGo(ph, ap);
+    var tip = C.tip(ph.key + ' · ' + tt(who), head + '\n\n' + lines.join('\n') + (days ? '\n\n' + tt('Licences, tooling, cloud and AI tokens are money only: see Cost.') : '') + '\n\n' + tt('Click to change the figures behind it.'));
+    return '<span class="tm" data-go="' + go + '"' + tip + '><i style="width:' + Math.max(2, v / Math.max(1e-9, maxR) * 100).toFixed(1) + '%;background:var(--' + (ap === 'alt' ? 'alt' : 'os') + ')"></i><b>' + sdlcText(v) + '</b></span>';
   }
   function sdlcInner() {
     if (sdlcScope === 'port' && sdlcMeasure === 'time') sdlcMeasure = 'effort';   // elapsed weeks are only meaningful for one application
@@ -1968,7 +1977,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function onChange(ev) {
     var t = ev.target, sp = t.dataset && t.dataset.special;
-    if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { if (t.value === 'custom' && sg2.skill !== 'custom') { var cur0 = E.skillOf(state, sg2); sg2.custom = { pace: cur0.pace, discount: cur0.discount, enable: cur0.enable }; } sg2.skill = t.value; E.ensureGroups(state); buildProjects(); recalc(); } return; }   // a team's experience with OutSystems
+    if (t.dataset && t.dataset.gexpall !== undefined) { if (E.setTeamExperience(state, t.value)) { E.ensureGroups(state); buildProjects(); recalc(); } return; }   // the portfolio's experience level
+    if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { if (t.value === 'custom' && sg2.skill !== 'custom') { var cur0 = E.skillOf(state, sg2); sg2.custom = { pace: cur0.pace, discount: cur0.discount, enable: cur0.enable }; } sg2.skill = t.value; E.ensureGroups(state); buildProjects(); buildInputs(); recalc(); } return; }   // a team's experience with OutSystems
     if (t.dataset && t.dataset.orgind !== undefined) { state.org.industry = t.value; E.applyOrgDefaults(state); buildInputs(); buildProjects(); recalc(); return; }   // the industry reshapes the starting figures
     if (t.dataset && t.dataset.usecase !== undefined) { setAppType(parseInt(t.dataset.usecase, 10), t.value); return; }   // an application's type
     if (t.dataset && t.dataset.text === 'startDate') { state.startDate = t.value; if (!t.value) state.licenceStart = ''; buildAssumptions(); buildProjects(); recalc(); return; }   // the date controls that depend on it are rebuilt
