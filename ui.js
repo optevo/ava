@@ -1701,6 +1701,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       '<div class="note">Pick-list of alternatives. Details and prices are in config/alternatives.json.</div>';
     $('cfg-defaults').innerHTML = '<h2 class="pt">' + tt('Defaults') + '</h2><p class="pd">' + tt('General values that rarely change. They are the starting point for every assessment.') + ' ' +
       tt('Change a default here and any assessment still using it follows; values changed in one assessment stay as they are. In the finished tool these come from standard config files in the template folder.') + '</p>' +
+      '<div class="resetbar"><button class="b" data-act="defaults-reset-all"' + C.tip(tt('Reset everything'), tt('Put every value on this tab, and the assessment\'s settings that follow them, back to the built-in defaults: stages and gates, cost drivers, analysis settings, starting figures, developer experience and the country rates you changed. Your applications, organisation and value figures are not touched.')) + '>' + tt('Reset everything to the built-in defaults') + '</button></div>' +
       sec('Stages and gates', deliveryCards('defaults')) + sec('Cost drivers', costCards('defaults')) + sec('Analysis settings', assumptionCards('defaults')) +
       sec('Starting figures', seedTables()) + sec('Developer experience', skillTable()) + sec('Sources', referencesCard()) + sec('Reference tables (read-only here)', card('Hourly cost of each role, by country (USD)', regs).replace('<div class="card">', '<div class="card" style="grid-column:1/-1">') + card('Currency table', fx) + card('Alternatives', alts));   // the role table has a column per role, so it takes the whole row
   }
@@ -3094,6 +3095,13 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     }
     else if (act === 'uc-pick') { setAppType(parseInt(t.dataset.i, 10), t.dataset.k); return; }
     else if (act === 'org-auto') { state.org.auto = true; E.applyOrgDefaults(state); buildInputs(); }
+    else if (act === 'defaults-reset-all') {
+      if (!window.confirm(tt('Reset every default, and the assessment settings that follow them, to the built-in values? Your applications, organisation and value figures stay as they are.'))) return;
+      DEFAULTS = E.defaultState(); delete state.rateCards;   // the rates then come from the built-in rate card again
+      Object.keys(GROUPS).forEach(function (g) { GROUPS[g].forEach(function (p) { setPath(p, defaultOf(p)); }); });
+      state.seeds = E.seedDefaults(); state.skill = JSON.parse(JSON.stringify(DEFAULTS.skill)); E.applyOrgDefaults(state);
+      buildInputs(); buildDefaults(); recalc(); toast(tt('Everything is back to the built-in defaults.'));
+    }
     else if (act === 'seeds-reset') { state.seeds = E.seedDefaults(); E.applyOrgDefaults(state); buildInputs(); buildDefaults(); toast(tt('The starting-figure ratios are back to the built-in values.')); }
     else if (act === 'remove') {
       if (state.projectList.length > 1) { state.projectList.splice(parseInt(t.dataset.i, 10), 1); appOpen = {}; }
