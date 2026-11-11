@@ -176,7 +176,7 @@
   #backchip[hidden] { display: none; }
   .prow button.vbtn { white-space: nowrap; font-size: 11.5px; } .prow button.vbtn.on { border-color: var(--os); color: var(--text); }
   .prow input.built { background: transparent; border-style: dashed; color: var(--muted); cursor: default; }
-  .bpanel { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--os); border-radius: 8px; padding: 10px 12px 6px; margin: 2px 0 12px; overflow-x: auto; }
+  .bpanel { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--os); border-radius: 8px; padding: 10px 12px 6px; margin: 2px 0 12px; overflow: visible; }
   .bhead { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; margin-bottom: 6px; } .bsum { font-size: 12px; color: var(--muted); }
   .badd { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 6px; font-size: 12px; color: var(--muted); } .badd .b { padding: 3px 9px; font-size: 11.5px; }
   .bsec h5 { margin: 10px 0 4px; font-size: 12.5px; } .bsub { font-weight: 400; color: var(--muted); margin-left: 8px; }
@@ -255,8 +255,8 @@
   .bl2 .bnotebox { grid-column: 1 / -1; } .bl2 .bnotebox[hidden] { display: none; } .bl2 .bnotebox textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; }
   .bl2 input.warnin { border-color: var(--warn); }
   .bgh { display: flex; gap: 10px; align-items: baseline; margin: 12px 0 0; font-size: 12.5px; } .bgh .bsub { margin-left: 0; }
-  .addrow { position: relative; margin: 8px 0 4px; } .addrow .pickin { width: 100%; box-sizing: border-box; }
-  .picklist { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; max-height: 340px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); } .picklist[hidden] { display: none; }
+  .addrow { position: relative; margin: 8px 0 4px; } .addrow .pickin { width: 100%; box-sizing: border-box; padding-right: 26px; } .addrow::after { content: '▾'; position: absolute; right: 10px; top: 6px; color: var(--muted); pointer-events: none; }
+  .picklist { margin-top: 4px; max-height: 340px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); } .picklist[hidden] { display: none; }
   .pickgrp { padding: 6px 10px 2px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   .pickopt { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px dashed var(--line); padding: 6px 10px; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; } .pickopt:hover, .pickopt:focus { background: var(--panel2); }
   .dgh .gqrow[hidden] { display: none; } .dgh .gqt { font-size: 12px; }
