@@ -229,6 +229,18 @@
     if (first && first.scrollIntoView) first.scrollIntoView({ block: 'center', behavior: 'smooth' });
     goTimer = setTimeout(clearGo, 3800);
   }
+  /* A benefit line has just been added: open its application, glow the line and its figures as a chart click does, bring it into view and put the cursor in its first figure. */
+  var glowNext = null;
+  function glowLine(i, j) {
+    var el = document.querySelector('.bl2[data-line="' + i + '-' + j + '"]'); if (!el) return;
+    appOpen[i] = true; applyAppFold();
+    clearGo(); clearTimeout(goTimer);
+    var marks = [el]; if (el.querySelectorAll) Array.prototype.forEach.call(el.querySelectorAll('.bfs input, .bfs select, .bamt input'), function (x) { marks.push(x); });
+    marks.forEach(function (x) { void x.offsetWidth; x.classList.add('hl'); });
+    if (el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    var first = el.querySelector && el.querySelector('.bfs input, .bamt input, .bfs select'); if (first && first.focus) { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }
+    goTimer = setTimeout(clearGo, 3800);
+  }
   function showBackChip() {
     var c = $('backchip');
     if (!c) { c = document.createElement('button'); c.id = 'backchip'; c.type = 'button'; document.body.appendChild(c); c.addEventListener('click', goBackNow); }
@@ -1517,7 +1529,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       : '<span class="bty-n"' + (CALC_INFO[l.type] ? C.tip(tt(calcName(l.type)), tt(CALC_INFO[l.type]) + (guide && guide[l.type] ? '\n\n' + guide[l.type] : '')) : '') + '>' + esc(tt(calcName(l.type))) + '</span>';
     var amount = l.type === 'simple' ? inp(P('amount'), 10000, 0) : '<b class="ro" id="bl-' + key + '"' + yrAttr(bpath(i, j, 'value')) + '></b>';
     var has = String(l.note || '').trim() !== '';
-    return '<div class="bl2 t-' + l.type + '"><div class="bty">' + typeCell + '</div><div class="bfs">' + fields + '</div><div class="bamt">' + amount + '</div>' +
+    return '<div class="bl2 t-' + l.type + '" data-line="' + key + '"><div class="bty">' + typeCell + '</div><div class="bfs">' + fields + '</div><div class="bamt">' + amount + '</div>' +
       '<button type="button" class="b bnb' + (has ? ' has' : '') + '" data-note="' + key + '"' + (has ? C.tip(tt('Why this figure'), String(l.note)) : C.tip(tt('Why this figure'), tt('Add a note: where the figure came from, or who confirmed it.'))) + ' aria-label="' + esc(tt('Why this figure')) + '">✎</button>' +
       '<button type="button" class="b" data-act="bl-del" data-i="' + i + '" data-j="' + j + '" title="' + esc(tt('Remove this line')) + '">×</button>' +
       '<div class="bnotebox" id="nb-' + key + '"' + (has ? '' : ' hidden') + '><textarea rows="2" data-tpath="' + P('note') + '" placeholder="' + esc(tt('Why: the justification for this line (source, who confirmed it)')) + '">' + esc(l.note || '') + '</textarea></div></div>';
@@ -1538,7 +1550,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         '<div class="note">' + tt('For example: 40 case handlers saving 20% of their time, with 80% of them using the application, is worth about {amt} a year as freed capacity.', { amt: C.moneyShort(E.lineValue(exLine).rev) }) + '</div>' +
         '<p><button type="button" class="b pri" data-act="bl-example" data-i="' + i + '">' + tt('Start with this example') + '</button></p>';
     }
-    html += '<div class="addrow"><input type="search" class="pickin" data-pick="' + i + '" autocomplete="off" placeholder="' + esc(tt('Add a benefit: search by what the application does, or choose')) + '"><div class="picklist" id="pl-' + i + '" hidden></div></div>';
+    html += '<div class="addrow"><div class="addlbl">＋ ' + tt('Add a benefit') + '</div><input type="search" class="pickin" data-pick="' + i + '" autocomplete="off" placeholder="' + esc(tt('Search by what the application does, or choose from the list')) + '"><div class="picklist" id="pl-' + i + '" hidden></div></div>';
     if (lines.length) html += (E.overlapping(lines) ? '<div class="note" style="color:var(--warn)">' + tt('Time saved per user or per transaction, and requests deflected, can count the same saving twice. Make sure each counts a different piece of work.') + '</div>' : '') + '<div class="note">Cash savings and switch-off savings are hard; freed capacity, revenue and risk are soft, and "Hard savings only" leaves them out. These are yearly figures once the application is live: going live sooner is already valued by the model, so do not count it again here.</div>';
     return html + '</div>';
   }
@@ -2620,13 +2632,14 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     return '<div class="finwrap"><table class="fin">' + head + block(alt, r.alt) + block('OutSystems', r.os) + foot + '</table></div>';
   }
 
-  /* How much is shown: a conversation (the story and the pipeline), the business case (adds the detail, the evidence and the costs), or the whole workbench. Each view includes the one before. */
+  /* How much is shown: a conversation (the story and the pipeline), the business case (adds the detail, the evidence and the costs), or everything, with the settings (admin). Each view includes the one before. */
   var LEVELS = { conv: 0, case: 1, work: 2 }, level = 'conv';
   function tabMin(name) { var b = document.querySelector('#tabs button[data-tab="' + name + '"]'); return (b && b.dataset.min) || 'conv'; }
   function ensureLevel(min) { if (LEVELS[level] < LEVELS[min || 'conv']) setLevel(min); }
   function setLevel(l) {
     if (LEVELS[l] === undefined) l = 'conv';
     level = l; document.body.dataset.level = l;
+    if (curId) scheduleSave();
     var sel = $('lvlsel'); if (sel) sel.value = l;
     document.querySelectorAll('#lvlseg button').forEach(function (b) { b.classList.toggle('on', b.dataset.level === l); });
     if (LEVELS[tabMin(curTab)] > LEVELS[l]) showTab('summary');   // the screen you were on is not part of this view
@@ -3109,6 +3122,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var nl = E.newLine(t.dataset.t, t.dataset.t === 'simple' ? { driver: t.dataset.d } : lineDefaults()); if (nl.what) nl.what = tt(nl.what);   // the label starts in the reader's language
       var sd = E.seedLine(nl, state); if (sd.length) nl.note = seedNote(sd).trim();   // sized from the organisation figures, with the basis said
       ap.build.push(nl);
+      glowNext = { i: parseInt(t.dataset.i, 10), j: ap.build.length - 1 };
     }
     else if (act === 'bl-del') { var dp = state.projectList[parseInt(t.dataset.i, 10)]; dp.build.splice(parseInt(t.dataset.j, 10), 1); }
     else if (act === 'bl-example') {
@@ -3134,6 +3148,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       if (state.projectList.length > 1) { state.projectList.splice(parseInt(t.dataset.i, 10), 1); appOpen = {}; }
     }
     buildKey(); buildProjects(); recalc();
+    if (glowNext) { var gn = glowNext; glowNext = null; glowLine(gn.i, gn.j); }   // show where the new line is
   }
 
   /* Analysis period: 3 and 5 years are the usual choices, but any length from 1 to 10 works. */
@@ -3254,12 +3269,27 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     return false;
   }
   function setSaveStatus(txt) { var e = $('savestatus'); if (e) e.textContent = txt; }
+  /* Many assessments, kept in this browser: an index (ava-assessments) and one record each (ava-as-<id>). An assessment is created the moment it is named; until then the work goes to a draft.
+   * A record keeps only what differs from the defaults, and the settings of that moment: the language and the view (the country and currency are part of the assessment itself). */
+  var INDEX_KEY = 'ava-assessments', REC_KEY = 'ava-as-', curId = '';
+  function readIndex() { try { var o = JSON.parse(localStorage.getItem(INDEX_KEY) || 'null'); if (o && o.list) return o; } catch (e) { /* ignore */ } return { cur: '', list: [] }; }
+  function writeIndex(ix) { try { localStorage.setItem(INDEX_KEY, JSON.stringify(ix)); } catch (e) { /* ignore */ } }
+  function newId() { return 'a' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); }
+  function snapshot() { return { v: 2, t: Date.now(), lang: I18N.lang(), level: level, state: ST.diff(E.defaultState(), state) || {} }; }
   function saveNow() {
     saveTimer = null;
     try {
-      /* Only what differs from the defaults is kept (version 2), so anything left alone follows the defaults; a version 1 save held everything and still loads the same way. */
-      localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 2, t: Date.now(), state: ST.diff(E.defaultState(), state) || {} }));
-      var d = new Date(); setSaveStatus(tt('Autosaved {time}', { time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }));
+      var ix = readIndex(), name = String(state.company || '').trim(), rec = snapshot();
+      if (!curId && name) { curId = newId(); ix.list.push({ id: curId, name: name, t: rec.t }); localStorage.removeItem(SAVE_KEY); }   // named: it becomes an assessment of its own
+      if (curId) {
+        var ent = ix.list.filter(function (x) { return x.id === curId; })[0];
+        if (!ent) { ent = { id: curId, name: name }; ix.list.push(ent); }
+        if (name) ent.name = name;   // renaming the title renames the assessment; clearing it keeps the old name in the list
+        ent.t = rec.t; ix.cur = curId;
+        localStorage.setItem(REC_KEY + curId, JSON.stringify(rec));
+      } else { ix.cur = ''; localStorage.setItem(SAVE_KEY, JSON.stringify(rec)); }
+      writeIndex(ix);
+      var d = new Date(); setSaveStatus(tt('Autosaved {time}', { time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })); buildAssessMenu();
     } catch (e) { setSaveStatus('Autosave is not available in this browser'); }
   }
   window.addEventListener('pagehide', function () { if (saveTimer) saveNow(); });   // a change made in the last moments before closing is still kept
@@ -3272,11 +3302,52 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function loadAutosave() {
     try {
-      var raw = localStorage.getItem(SAVE_KEY); if (!raw) return false;
+      var ix = readIndex(), raw = ix.cur ? localStorage.getItem(REC_KEY + ix.cur) : localStorage.getItem(SAVE_KEY);
+      if (ix.cur && !raw) { ix.cur = ''; raw = localStorage.getItem(SAVE_KEY); }
+      if (!raw) return false;
       var o = JSON.parse(raw); if (!o || !o.state) return false;
-      state = ST.merge(E.defaultState(), o.state); normalizeAlt();
+      state = ST.merge(E.defaultState(), o.state); normalizeAlt(); curId = ix.cur || '';
       return true;
     } catch (e) { return false; }
+  }
+  /* Open another assessment: the current one is saved first, then everything is restored as it was left, including the language and the view. */
+  function openAssessment(id, leaving) {   // leaving: the one in view was just deleted, so it must not be saved again
+    if (id === curId) return;
+    if (saveTimer) clearTimeout(saveTimer); if (!leaving) saveNow();
+    var o = null; try { o = JSON.parse(localStorage.getItem(REC_KEY + id) || 'null'); } catch (e) { /* ignore */ }
+    if (!o || !o.state) { toast(tt('Could not open that assessment.'), 6000); buildAssessMenu(); return; }
+    state = ST.merge(E.defaultState(), o.state); normalizeAlt(); curId = id;
+    var go = function () { if (o.level && LEVELS[o.level] !== undefined) setLevel(o.level); afterStateReplaced(); toast(tt('Opened {name}', { name: state.company || tt('Untitled') })); };
+    if (o.lang && o.lang !== I18N.lang()) I18N.setLang(o.lang, go); else go();
+  }
+  function deleteAssessment(id) {
+    var ix = readIndex(), ent = ix.list.filter(function (x) { return x.id === id; })[0]; if (!ent) return;
+    if (!window.confirm(tt('Delete the assessment {name}? This cannot be undone. Export it to Excel first if you want a copy.', { name: ent.name }))) return;
+    try { localStorage.removeItem(REC_KEY + id); } catch (e) { /* ignore */ }
+    ix.list = ix.list.filter(function (x) { return x.id !== id; }); if (ix.cur === id) ix.cur = ''; writeIndex(ix);
+    if (id === curId) {   // the one in view is gone: open the most recent other, or start afresh
+      curId = ''; var next = ix.list.slice().sort(function (a, b2) { return b2.t - a.t; })[0];
+      if (next) openAssessment(next.id, true); else { state = E.defaultState(); afterStateReplaced(); }
+    } else buildAssessMenu();
+  }
+  /* The assessments menu next to the title: every assessment kept here, the one in view marked, a start-afresh entry. */
+  function buildAssessMenu() {
+    var m = $('asmenu'); if (!m) return;
+    var ix = readIndex(), list = ix.list.slice().sort(function (a, b) { return b.t - a.t; });
+    m.innerHTML = '<button type="button" data-asnew="1">＋ ' + esc(tt('New assessment')) + '</button>' + (list.length ? '' : '<div class="note">' + esc(tt('Name an assessment (the title) and it is kept here. You can keep as many as you like and switch between them.')) + '</div>') +
+      list.map(function (x) { return '<div class="asrow' + (x.id === curId ? ' on' : '') + '"><button type="button" data-asopen="' + esc(x.id) + '">' + (x.id === curId ? '✓ ' : '') + esc(x.name || tt('Untitled')) + '</button><button type="button" class="asdel" data-asdel="' + esc(x.id) + '" title="' + esc(tt('Delete this assessment')) + '" aria-label="' + esc(tt('Delete this assessment')) + '">×</button></div>'; }).join('');
+  }
+  function initAssess() {
+    var btn = $('asbtn'), m = $('asmenu'); if (!btn || !m) return;
+    buildAssessMenu();
+    btn.addEventListener('click', function (ev) { ev.stopPropagation(); buildAssessMenu(); m.hidden = !m.hidden; });
+    document.addEventListener('click', function (ev) { if (!m.hidden && !m.contains(ev.target) && ev.target !== btn) m.hidden = true; });
+    m.addEventListener('click', function (ev) {
+      var t = ev.target; if (!t || !t.dataset) return;
+      if (t.dataset.asnew) { m.hidden = true; newAssessment(); }
+      else if (t.dataset.asopen) { m.hidden = true; openAssessment(t.dataset.asopen); }
+      else if (t.dataset.asdel) { deleteAssessment(t.dataset.asdel); }
+    });
   }
   /* After the state is replaced (import, new assessment): rebuild every input and restart the pipeline. */
   function afterStateReplaced() {
@@ -3314,7 +3385,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var fr = new FileReader();
     fr.onload = function () {
       ST.parseXlsx(new Uint8Array(fr.result)).then(function (rows) {
-        var go = function () { state = ST.merge(E.defaultState(), ST.inflate(rows)); normalizeAlt(); afterStateReplaced(); toast(tt('Imported {name}', { name: file.name })); };
+        var go = function () { var keep = curId && state.company ? state.company : null; state = ST.merge(E.defaultState(), ST.inflate(rows)); if (keep) state.company = keep; normalizeAlt(); afterStateReplaced();   // a checkpoint goes into the assessment in view, which keeps its name
+          toast(tt('Imported {name}', { name: file.name })); };
         if (rows.warnings && rows.warnings.length) askModal('Check the workbook before importing', rows.warnings.join(' '), 'Import anyway', go); else go();
       }).catch(function (e) { toast(tt('Could not import:') + ' ' + (e && e.message ? e.message : e), 9000); });
     };
@@ -3322,9 +3394,12 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     fr.readAsArrayBuffer(file);
   }
   function newAssessment() {
-    if (!window.confirm('Start a new assessment? The current one is replaced (export it to Excel first if you want to keep it).')) return;
-    state = E.defaultState(); try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+    var d = ST.diff(E.defaultState(), state);
+    if (!curId && d && Object.keys(d).length && !window.confirm('Start a new assessment? The current one is replaced (export it to Excel first if you want to keep it).')) return;   // an unnamed draft has nowhere else to live
+    if (saveTimer) clearTimeout(saveTimer); if (curId) saveNow();
+    state = E.defaultState(); curId = ''; try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
     afterStateReplaced(); toast('Started a new assessment');
+    var t = $('titleinp'); if (t) t.focus();
   }
 
   /* ---------------------------------------------------------------- slides (PowerPoint) */
@@ -3570,6 +3645,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   /* The language changed: translate the page and rebuild every screen from the state. */
   function relocalise() {
     applyStatic(); setTips(tipsOn); setPresent(presenting); applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+    scheduleSave();   // the language is part of what an assessment remembers
     buildLangSelect(); buildSumtools(); buildInputs(); buildDefaults(); if ($('pipeline') && sims) buildPipeline(); recalc(); buildLocalisation();
   }
 
@@ -3656,7 +3732,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     $('langsel').addEventListener('change', function () { chooseLanguage($('langsel').value); });
     I18N.onChange(relocalise); watchPage(); trTree(document.body);
     buildInputs(); buildDefaults(); buildLocalisation();
-    initFile();
+    initFile(); initAssess();
     if (restored) { $('hardOnly').checked = !!state.hardOnly; toast('Restored your last assessment. Use File, then New assessment, to start fresh.', 7000); }
     document.addEventListener('click', onActClick);
     document.addEventListener('click', function (ev) {   // the icon at the right of an amount opens its yearly pattern

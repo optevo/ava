@@ -141,6 +141,11 @@
   details.fold .fsum { display: block; font-size: 12px; color: var(--text); }
   details.fold[open] .fsum { display: none; }
   #filewrap { position: relative; }
+  #aswrap { position: relative; } #asbtn { padding: 4px 8px; margin-left: -4px; }
+  #asmenu { position: absolute; left: 0; top: 36px; z-index: 60; min-width: 260px; max-height: 70vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; box-shadow: 0 8px 24px var(--shadow); } #asmenu[hidden] { display: none; }
+  #asmenu button { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: var(--text); padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; } #asmenu button:hover { background: var(--panel2); }
+  #asmenu .asrow { display: flex; align-items: center; } #asmenu .asrow.on button:first-child { font-weight: 700; } #asmenu .asrow .asdel { width: 32px; flex: none; text-align: center; color: var(--muted); } #asmenu .note { padding: 6px 10px 2px; margin: 0; }
+  body.present #aswrap { display: none; }
   #filemenu { position: absolute; right: 0; top: 36px; z-index: 60; min-width: 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; box-shadow: 0 8px 24px var(--shadow); }
   #filemenu[hidden] { display: none; }
   #filemenu button { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: var(--text); padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
@@ -246,7 +251,7 @@
   .bl input, .bl select { width: 100%; min-width: 0; } .bl .b { padding: 3px 0; }
   .bl input.warnin { border-color: var(--warn); }
   /* one row per benefit line: type, labelled formula figures, yearly amount, note icon, remove */
-  .bl2 { display: grid; grid-template-columns: 150px minmax(0, 1fr) 110px 30px 30px; gap: 4px 8px; align-items: end; margin: 6px 0; padding: 6px 0; border-top: 1px dashed var(--line); }
+  .bl2 { display: grid; grid-template-columns: 150px minmax(0, 1fr) 110px 30px 30px; gap: 4px 8px; align-items: end; margin: 8px 0; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }   /* each line is its own card */
   .bl2 .bty { align-self: center; } .bl2 .bty select { width: 100%; } .bl2 .bty-n { font-size: 12.5px; font-weight: 600; cursor: help; }
   .bl2 .bfs { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: flex-end; }
   .bl2 .fx { display: flex; flex-direction: column; gap: 1px; font-size: 10.5px; color: var(--muted); cursor: help; line-height: 1.2; } .bl2 .fx input { width: 76px; } .bl2 .fx.fxw input { width: 150px; } .bl2 .fx select { max-width: 150px; }
@@ -255,7 +260,7 @@
   .bl2 .bnotebox { grid-column: 1 / -1; } .bl2 .bnotebox[hidden] { display: none; } .bl2 .bnotebox textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; }
   .bl2 input.warnin { border-color: var(--warn); }
   .bgh { display: flex; gap: 10px; align-items: baseline; margin: 12px 0 0; font-size: 12.5px; } .bgh .bsub { margin-left: 0; }
-  .addrow { position: relative; margin: 8px 0 4px; } .addrow .pickin { width: 100%; box-sizing: border-box; padding-right: 26px; } .addrow::after { content: '▾'; position: absolute; right: 10px; top: 6px; color: var(--muted); pointer-events: none; }
+  .addrow { position: relative; margin: 8px 0 4px; } .addrow .pickin { width: 100%; box-sizing: border-box; padding-right: 26px; } .addlbl { font-size: 12px; font-weight: 700; color: var(--os); margin: 0 0 3px; } .addrow::after { content: '▾'; position: absolute; right: 10px; top: 24px; color: var(--muted); pointer-events: none; }
   .picklist { margin-top: 4px; max-height: 340px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); } .picklist[hidden] { display: none; }
   .pickgrp { padding: 6px 10px 2px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   .pickopt { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px dashed var(--line); padding: 6px 10px; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; } .pickopt:hover, .pickopt:focus { background: var(--panel2); }
@@ -569,16 +574,17 @@
 <header>
   <h1><b>AVA</b> · <span data-i18n>AI Value Assessment</span></h1>
   <input type="text" id="titleinp" data-text="company" placeholder="Untitled" aria-label="Assessment name (the organisation)" title="Name this assessment (the organisation). Needed before you export." data-i18n-attr="placeholder,aria-label,title">
+  <span id="aswrap"><button type="button" class="b" id="asbtn" title="Your assessments: switch between them" aria-label="Your assessments: switch between them" data-i18n-attr="title,aria-label">▾</button><div id="asmenu" hidden></div></span>
   <div class="sp"></div>
-  <span class="seg" id="lvlseg" role="group" aria-label="View" title="How much to show: a conversation, the business case, or the whole workbench" data-i18n-attr="title,aria-label">
+  <span class="seg" id="lvlseg" role="group" aria-label="View" title="How much to show: a conversation, the business case, or everything, with the settings (admin)" data-i18n-attr="title,aria-label">
     <button type="button" data-level="conv" data-i18n>Conversation</button>
     <button type="button" data-level="case" data-i18n>Business case</button>
-    <button type="button" data-level="work" data-i18n>Workbench</button>
+    <button type="button" data-level="work" data-i18n>Admin</button>
   </span>
-  <select id="lvlsel" aria-label="View" title="How much to show: a conversation, the business case, or the whole workbench" data-i18n-attr="title,aria-label">
+  <select id="lvlsel" aria-label="View" title="How much to show: a conversation, the business case, or everything, with the settings (admin)" data-i18n-attr="title,aria-label">
     <option value="conv" data-i18n>Conversation</option>
     <option value="case" data-i18n>Business case</option>
-    <option value="work" data-i18n>Workbench</option>
+    <option value="work" data-i18n>Admin</option>
   </select>
   <select id="langsel" aria-label="Language" title="Language"></select>
   <span id="filewrap"><button class="b" id="filebtn" title="Save, open and export" data-i18n data-i18n-attr="title">File</button>
