@@ -1351,7 +1351,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     return '<select data-usecase="' + i + '" title="' + esc(tt('Choose a type to add the usual calculators for it, with placeholder numbers to edit. Leave it blank to build the value yourself.')) + '"><option value="">' + esc(tt('Not set')) + '</option>' +
       E.USE_CASES.slice().sort(function (a, b) { var ia = state.org && state.org.industry === a[0] ? 0 : 1, ib = state.org && state.org.industry === b[0] ? 0 : 1; return ia - ib; }).map(function (g) { return '<optgroup label="' + esc(tt(g[0])) + '">' + g[1].map(function (x) { return '<option value="' + x[0] + '"' + (p.useCase === x[0] ? ' selected' : '') + '>' + esc(tt(x[1])) + '</option>'; }).join('') + '</optgroup>'; }).join('') + '</select>';
   }
-  /* Which calculator? Two always-relevant ones first, then what the application will improve (each row names the calculator and where it is used), then every calculator. */
+  /* Adding a benefit: one searchable picker. Simple values first (cost savings, revenue uplift, risk reduction), then the calculators suited to the application's type, then the others;
+   * search matches a calculator's name, what it improves, its typical uses, and application types. */
   var BENEFITS = [   // what it improves -> the calculator that measures it
     ['Staff get through work faster', 'handling'], ['Customers or staff serve themselves', 'deflect'], ['More people finish a sign-up or application', 'completion'],
     ['Fewer errors, rework or leakage', 'errors'], ['Cases are completed sooner', 'cycle'], ['Fewer failures, incidents or repeat visits', 'events'],
@@ -1366,45 +1367,53 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     }); });
     return out;
   }
-  function benefitItems() {
-    return BENEFITS.map(function (bn, k) { return { key: String(k), text: tt(bn[0]) + ', ' + bn[0] + ', ' + tt(calcName(bn[1])) + ', ' + calcName(bn[1]) + ', ' + tt(usesOf(bn[1])) + ', ' + usesOf(bn[1]) }; });
+  function typeItems() {
+    var out = []; E.USE_CASES.forEach(function (g) { g[1].forEach(function (uc) {
+      var al = E.USE_ALIASES[uc[0]] || '';
+      out.push({ key: uc[0], text: tt(uc[1]) + ', ' + uc[1] + ', ' + tt(al) + ', ' + al, boost: state.org && state.org.industry === g[0] ? 1.5 : 0 });
+    }); });
+    return out;
   }
-  function ucSearch(i, q) {
-    var box = $('ucres-' + i), rows = document.querySelectorAll('#cbrows-' + i + ' .cbrow'), hits = {}, html = '', query = String(q || '').trim();
-    if (!query) { if (box) box.innerHTML = ''; Array.prototype.forEach.call(rows, function (r) { r.hidden = false; }); return; }
-    var tm = E.matchTypes(query, typeItems(), 4), bm = E.matchTypes(query, benefitItems(), 8);
-    bm.forEach(function (m) { hits[m.key] = true; });
-    tm.forEach(function (m) {
-      var uc = null; E.USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === m.key) uc = x; }); });
-      var calcs = uc[2].map(function (ln) { return tt(calcName(ln[0])); }).join(', ');
-      html += '<div class="cbrow"><div><b>' + esc(tt(uc[1])) + '</b> <span class="cdesc">' + tt('matched on {w}', { w: esc(m.words.join(', ')) }) + '</span><div class="cdesc">' + tt('Adds {list}', { list: esc(calcs) }) + '</div></div>' +
-        '<button type="button" class="b" data-act="uc-pick" data-i="' + i + '" data-k="' + uc[0] + '">' + tt('Use this type') + '</button></div>';
+  function pickItems() {
+    var out = DRIVER_OPTS.map(function (o) { return { key: 'simple:' + o[0], t: 'simple', d: o[0], name: tt(o[1]), desc: '', grp: 'simple', text: tt(o[1]) + ', ' + o[1] }; });
+    var phrase = {}; BENEFITS.forEach(function (bn) { phrase[bn[1]] = bn[0]; });
+    phrase.labour = 'the time people save using it'; phrase.decom = 'costs that stop when an old system is retired';
+    ['labour', 'decom'].concat(BENEFITS.map(function (bn) { return bn[1]; })).forEach(function (ty) {
+      out.push({ key: ty, t: ty, d: '', name: tt(calcName(ty)), desc: tt(phrase[ty]), grp: 'calc', text: tt(calcName(ty)) + ', ' + calcName(ty) + ', ' + tt(phrase[ty]) + ', ' + phrase[ty] + ', ' + tt(usesOf(ty)) + ', ' + usesOf(ty) });
     });
-    if (!tm.length && !bm.length) html = '<div class="cdesc">' + tt('No match. Try a broader word, or choose from the list below.') + '</div>';
-    if (box) box.innerHTML = html;
-    Array.prototype.forEach.call(rows, function (r) { r.hidden = !hits[r.getAttribute('data-b')]; });
+    return out;
   }
-  function calcChooser(i, p, lines) {
-    var has = {}; lines.forEach(function (l) { has[l.type] = true; });
-    var uc = null; E.USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === p.useCase) uc = x; }); });
-    var sug = {}; if (uc) uc[2].forEach(function (ln) { sug[ln[0]] = true; });
-    var addBtn = function (type, label) { return '<button type="button" class="b" data-act="bl-add" data-i="' + i + '" data-t="' + type + '"' + calcTip(type) + '>' + tt(label || BLOCK_ADD[type]) + '</button>'; };
-    var core = '<div class="badd"><span class="kind calc"' + C.tip('Calculators', 'Work the figure out from its parts, each with its own inputs and justification. The calculators are general: they take a business metric such as transactions, requests or events, whatever the industry. Good when the number needs to stand up to questions.') + '>' + tt('Calculators') + '</span> ' +
-      '<span class="cdesc">' + tt('Worth checking for every application:') + '</span> ' + addBtn('labour') + ' <span class="cdesc">' + tt('the time people save using it') + '</span> ' + addBtn('decom') + ' <span class="cdesc">' + tt('costs that stop when an old system is retired') + '</span></div>';
-    var rows = BENEFITS.map(function (bn) {
-      var ty = bn[1], mark = sug[ty] ? ' <span class="sugg">' + tt('Suggested for {type}', { type: tt(uc[1]) }) + '</span>' : (has[ty] ? ' <span class="cdesc">' + tt('Added') + ' ✓</span>' : '');
-      return '<div class="cbrow" data-b="' + BENEFITS.indexOf(bn) + '"><div><b>' + tt(bn[0]) + '</b>' + mark + '<div class="cdesc">' + tt(calcName(ty)) + (usesOf(ty) ? ' · ' + tt('Typical uses') + ': ' + tt(usesOf(ty)) : '') + '</div></div>' + addBtn(ty, '+ Add') + '</div>';
-    }).join('');
-    var all = BLOCKS.filter(function (b) { return b[0] !== 'simple' && b[0] !== 'other'; }).map(function (b) { return addBtn(b[0]); }).join(' ');
-    return core + '<details class="which"' + (lines.length ? '' : ' open') + '><summary>' + tt('Which other calculator? Start from what the application will improve') + '</summary>' +
-      '<input type="search" class="ucsearch" data-ucsearch="' + i + '" placeholder="' + esc(tt('Search by what the application does, such as claims, onboarding or permits')) + '"><div id="ucres-' + i + '"></div><div id="cbrows-' + i + '">' + rows + '</div>' +
-      '<div class="badd" style="margin-top:8px"><span class="cdesc">' + tt('All calculators:') + '</span> ' + all + '</div></details>';
+  function pickHtml(i, q) {
+    var p = state.projectList[i], query = String(q || '').trim(), html = '', items = pickItems(), byKey = {}, shown = {};
+    items.forEach(function (it) { byKey[it.key] = it; });
+    var opt = function (it) { return '<button type="button" class="pickopt" data-act="bl-add" data-i="' + i + '" data-t="' + it.t + '"' + (it.d ? ' data-d="' + it.d + '"' : '') + '><b>' + esc(it.name) + '</b>' + (it.desc ? ' <span class="cdesc">' + esc(it.desc) + '</span>' : '') + '</button>'; };
+    var grp = function (title, list) { return list.length ? '<div class="pickgrp">' + esc(title) + '</div>' + list.map(opt).join('') : ''; };
+    if (query) {
+      E.matchTypes(query, items.map(function (it) { return { key: it.key, text: it.text }; }), 8).forEach(function (m) { html += opt(byKey[m.key]); });
+      var tm = E.matchTypes(query, typeItems(), 4), tl = '';
+      tm.forEach(function (m) {
+        var uc = null; E.USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === m.key) uc = x; }); });
+        tl += '<button type="button" class="pickopt" data-act="uc-pick" data-i="' + i + '" data-k="' + uc[0] + '"><b>' + esc(tt(uc[1])) + '</b> <span class="cdesc">' + tt('Adds {list}', { list: esc(uc[2].map(function (ln) { return tt(calcName(ln[0])); }).join(', ')) }) + '</span></button>';
+      });
+      if (tl) html += '<div class="pickgrp">' + tt('Application types') + '</div>' + tl;
+      return html || '<div class="cdesc" style="padding:6px 8px">' + tt('No match. Try a broader word, or choose from the list below.') + '</div>';
+    }
+    var uc0 = null; E.USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === p.useCase) uc0 = x; }); });
+    if (uc0) {
+      var sg = []; uc0[2].forEach(function (ln) { if (byKey[ln[0]] && !shown[ln[0]]) { shown[ln[0]] = 1; sg.push(byKey[ln[0]]); } });
+      html += grp(tt('Suggested for {type}', { type: tt(uc0[1]) }), sg);
+    }
+    html += grp(tt('Simple values'), items.filter(function (it) { return it.grp === 'simple'; }));
+    html += grp(tt('Calculators'), items.filter(function (it) { return it.grp === 'calc' && !shown[it.key]; }));
+    return html;
   }
+  function openPick(i, q) { var el = $('pl-' + i); if (!el) return; el.innerHTML = pickHtml(i, q); el.hidden = false; }
+  function closePicks() { Array.prototype.forEach.call(document.querySelectorAll('.picklist'), function (e) { e.hidden = true; }); }
   /* Guidance for an application's type: what each calculator's metrics mean for that kind of application. */
   function typeGuide(p) {
     var uc = null, out = {}; E.USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === p.useCase) uc = x; }); });
     if (!uc || !uc[3]) return out;
-    uc[2].forEach(function (ln, k) { if (uc[3][k]) out[ln[0]] = '<div class="note cap"><b>' + tt('In {type}:', { type: tt(uc[1]) }) + '</b> ' + tt(uc[3][k]) + '</div>'; });
+    uc[2].forEach(function (ln, k) { if (uc[3][k]) out[ln[0]] = tt('In {type}:', { type: tt(uc[1]) }) + ' ' + tt(uc[3][k]); });
     return out;
   }
   function calcName(type) { var b = BLOCKS.filter(function (x) { return x[0] === type; })[0]; return b ? b[1] : type; }
@@ -1463,53 +1472,65 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     other: [['What', 'A benefit that the other line types do not cover.'], ['Amount / year', 'The yearly amount.'], ['Counts as', 'Cash is a hard saving. Soft is counted with the revenue and productivity benefits.'], ['Per year', 'The yearly value of this line.'], ['', '']]
   };
   var HOW = [['cash', 'Cash saving'], ['capacity', 'Freed capacity']];
-  function builderLine(i, j, l) {
-    var P = function (f) { return bpath(i, j, f); }, num = function (f, step, max) { return inp(P(f), step || 1, 0, max); }, cell = function (h) { return '<span class="bc">' + h + '</span>'; };
-    var out = '<div class="bl t-' + l.type + '">';
-    if (l.type === 'simple') {
-      out += bsel(P('driver'), DRIVER_OPTS.map(function (o) { return [o[0], tt(o[1])]; }), l.driver) + num('amount', 10000);
-    } else if (l.type === 'labour') {
-      out += bsel(P('group'), R.ROLE_GROUPS.map(function (g) { return [g.key, g.label]; }), l.group) + num('users') + num('salary') + num('mult', 0.05) + num('saved', 5, 100) + num('adopt', 5, 100) +
-        bsel(P('how'), HOW, l.how) + (l.how === 'capacity' ? num('realise', 5, 100) : '<span></span>');
+  /* Which of the three headline values a line belongs to, for grouping: cost savings, revenue and productivity, or risk reduction. */
+  var LINE_CATS = [['cost', 'Cost savings'], ['rev', 'Revenue and productivity'], ['risk', 'Risk reduction']];
+  function lineCat(l) {
+    if (l.type === 'simple') return l.driver === 'rev' || l.driver === 'risk' ? l.driver : 'cost';
+    if (l.type === 'risk') return 'risk';
+    if (l.type === 'labour' || l.type === 'handling' || l.type === 'other') return l.how === 'cash' ? 'cost' : 'rev';
+    if (l.type === 'revenue' || l.type === 'completion' || l.type === 'cycle') return 'rev';
+    return 'cost';
+  }
+  /* One line of value on one row: its type, the figures of its formula (labelled), the yearly amount at the right (typed for a simple value, calculated otherwise), and a note icon that opens the
+   * justification. */
+  function builderLine(i, j, l, guide) {
+    var P = function (f) { return bpath(i, j, f); }, num = function (f, step, max) { return inp(P(f), step || 1, 0, max); }, f = [], key = i + '-' + j;
+    if (l.type === 'labour') {
+      f = [bsel(P('group'), R.ROLE_GROUPS.map(function (g) { return [g.key, g.label]; }), l.group), num('users'), num('salary'), num('mult', 0.05), num('saved', 5, 100), num('adopt', 5, 100), bsel(P('how'), HOW, l.how), l.how === 'capacity' ? num('realise', 5, 100) : null];
     } else if (l.type === 'handling') {
-      out += btxt(P('what'), l.what, 'What is handled') + bsel(P('group'), R.ROLE_GROUPS.map(function (g) { return [g.key, g.label]; }), l.group) + num('volume') + num('mins', 0.5) + num('salary') + num('mult', 0.05) + bsel(P('how'), HOW, l.how) + (l.how === 'capacity' ? num('realise', 5, 100) : '<span></span>');
+      f = [btxt(P('what'), l.what, 'What is handled'), bsel(P('group'), R.ROLE_GROUPS.map(function (g) { return [g.key, g.label]; }), l.group), num('volume'), num('mins', 0.5), num('salary'), num('mult', 0.05), bsel(P('how'), HOW, l.how), l.how === 'capacity' ? num('realise', 5, 100) : null];
     } else if (l.type === 'deflect') {
-      out += btxt(P('what'), l.what, 'What is deflected') + num('volume') + num('share', 5, 100) + num('per', 1);
+      f = [btxt(P('what'), l.what, 'What is deflected'), num('volume'), num('share', 5, 100), num('per', 1)];
     } else if (l.type === 'completion') {
-      out += btxt(P('what'), l.what, 'What is started') + num('units') + num('from', 1, 100) + num('to', 1, 100) + num('per') + num('margin', 5, 100);
+      f = [btxt(P('what'), l.what, 'What is started'), num('units'), num('from', 1, 100), num('to', 1, 100), num('per'), num('margin', 5, 100)];
     } else if (l.type === 'errors') {
-      out += btxt(P('what'), l.what, 'What is handled') + num('volume') + num('from', 0.5, 100) + num('to', 0.5, 100) + num('per', 1);
+      f = [btxt(P('what'), l.what, 'What is handled'), num('volume'), num('from', 0.5, 100), num('to', 0.5, 100), num('per', 1)];
     } else if (l.type === 'cycle') {
-      out += btxt(P('what'), l.what, 'What is completed') + num('volume') + num('days', 0.5) + num('per', 1) + num('realise', 5, 100);
+      f = [btxt(P('what'), l.what, 'What is completed'), num('volume'), num('days', 0.5), num('per', 1), num('realise', 5, 100)];
     } else if (l.type === 'events') {
-      out += btxt(P('what'), l.what, 'What is avoided') + num('volume') + num('reduction', 5, 100) + num('per');
+      f = [btxt(P('what'), l.what, 'What is avoided'), num('volume'), num('reduction', 5, 100), num('per')];
     } else if (l.type === 'decom') {
-      out += btxt(P('what'), l.what, 'What is turned off') + num('lic') + num('infra') + num('support') + num('fte', 0.5) + num('fteCost') + num('retired', 5, 100);
+      f = [btxt(P('what'), l.what, 'What is turned off'), num('lic'), num('infra'), num('support'), num('fte', 0.5), num('fteCost'), num('retired', 5, 100)];
     } else if (l.type === 'revenue') {
-      out += bsel(P('basis'), [['customers', 'Customers'], ['transactions', 'Transactions'], ['other', 'Other units']], l.basis) + num('units') + num('per') + num('uplift', 1, 100) + num('margin', 5, 100);
+      f = [bsel(P('basis'), [['customers', 'Customers'], ['transactions', 'Transactions'], ['other', 'Other units']], l.basis), num('units'), num('per'), num('uplift', 1, 100), num('margin', 5, 100)];
     } else if (l.type === 'risk') {
-      out += btxt(P('what'), l.what, 'The risk') + num('exposure') + num('reduction', 5, 100);
-    } else {
-      out += btxt(P('what'), l.what, 'What it is') + num('amount') + bsel(P('how'), [['cash', 'Cash saving'], ['soft', 'Soft benefit']], l.how);
+      f = [btxt(P('what'), l.what, 'The risk'), num('exposure'), num('reduction', 5, 100)];
+    } else if (l.type !== 'simple') {
+      f = [btxt(P('what'), l.what, 'What it is'), num('amount'), bsel(P('how'), [['cash', 'Cash saving'], ['soft', 'Soft benefit']], l.how)];
     }
-    out += cell('<b class="ro" id="bl-' + i + '-' + j + '"' + (l.type === 'simple' ? '' : yrAttr(bpath(i, j, 'value'))) + '></b>') + '<button class="b" data-act="bl-del" data-i="' + i + '" data-j="' + j + '" title="Remove this line">×</button>';
-    out += '<div class="bnote">' + btxt(P('note'), l.note, 'Why: the justification for this line (source, who confirmed it)') + '</div></div>';
-    return out;
+    var cols = BCOLS[l.type] || [], fields = f.map(function (h, k) {
+      var c = cols[k]; if (h === null || !c) return '';
+      return '<label class="fx' + (/type="text"/.test(h) ? ' fxw' : '') + '"' + (c[1] ? C.tip(c[0], c[1]) : '') + '><span>' + esc(c[0] === 'Salary' ? tt('Salary ({c})', { c: curSym() }) : tt(c[0])) + '</span>' + h + '</label>';
+    }).join('');
+    var typeCell = l.type === 'simple'
+      ? bsel(P('driver'), DRIVER_OPTS.map(function (o) { return [o[0], tt(o[1])]; }), l.driver)
+      : '<span class="bty-n"' + (CALC_INFO[l.type] ? C.tip(tt(calcName(l.type)), tt(CALC_INFO[l.type]) + (guide && guide[l.type] ? '\n\n' + guide[l.type] : '')) : '') + '>' + esc(tt(calcName(l.type))) + '</span>';
+    var amount = l.type === 'simple' ? inp(P('amount'), 10000, 0) : '<b class="ro" id="bl-' + key + '"' + yrAttr(bpath(i, j, 'value')) + '></b>';
+    var has = String(l.note || '').trim() !== '';
+    return '<div class="bl2 t-' + l.type + '"><div class="bty">' + typeCell + '</div><div class="bfs">' + fields + '</div><div class="bamt">' + amount + '</div>' +
+      '<button type="button" class="b bnb' + (has ? ' has' : '') + '" data-note="' + key + '"' + (has ? C.tip(tt('Why this figure'), String(l.note)) : C.tip(tt('Why this figure'), tt('Add a note: where the figure came from, or who confirmed it.'))) + ' aria-label="' + esc(tt('Why this figure')) + '">✎</button>' +
+      '<button type="button" class="b" data-act="bl-del" data-i="' + i + '" data-j="' + j + '" title="' + esc(tt('Remove this line')) + '">×</button>' +
+      '<div class="bnotebox" id="nb-' + key + '"' + (has ? '' : ' hidden') + '><textarea rows="2" data-tpath="' + P('note') + '" placeholder="' + esc(tt('Why: the justification for this line (source, who confirmed it)')) + '">' + esc(l.note || '') + '</textarea></div></div>';
   }
   function builderPanel(i, p) {
-    var lines = p.build || [];
-    var addSimple = DRIVER_OPTS.map(function (o) { return '<button type="button" class="b" data-act="bl-add" data-i="' + i + '" data-t="simple" data-d="' + o[0] + '">+ ' + tt(o[1]) + '</button>'; }).join(' '),
-      addCalc = BLOCKS.filter(function (b) { return b[0] !== 'simple' && b[0] !== 'other'; })   /* "Other" is no longer offered (a simple value does the same); assessments that already have one still show it */.map(function (b) { return '<button type="button" class="b" data-act="bl-add" data-i="' + i + '" data-t="' + b[0] + '"' + calcTip(b[0]) + '>' + tt(BLOCK_ADD[b[0]]) + '</button>'; }).join(' ');
-    var html = '<div class="bpanel"><div class="bhead"><b>' + tt('Value for {name}', { name: esc(p.name || tt('this application')) }) + '</b><span class="bsum" id="bsum-' + i + '"></span>' + (lines.length ? '<button type="button" class="b" data-act="bl-copy" data-i="' + i + '"' + C.tip('Copy these lines', 'Copies these benefit lines to every other included application that has none yet, so a group of similar applications starts from the same build-up.') + '>' + tt('Copy these lines to the other applications') + '</button>' : '') + '</div>' +
-      '<div class="badd"><span class="kind simple"' + C.tip('Simple values', 'A figure you already have, typed in as it is: a yearly amount of cost savings, revenue uplift or risk reduction. Good for a first conversation.') + '>' + tt('Simple values') + '</span> ' + addSimple + '</div>' +
-      calcChooser(i, p, lines);
-    var caps = typeGuide(p);
-    BLOCKS.forEach(function (bt) {
-      var rows = '';
-      lines.forEach(function (l, j) { if (l.type === bt[0]) rows += builderLine(i, j, l); });
-      if (!rows) return;
-      var head = BCOLS[bt[0]].map(function (c) { return '<span' + (c[1] ? C.tip(c[0], c[1]) : '') + '>' + esc(c[0] === 'Salary' ? tt('Salary ({c})', { c: curSym() }) : tt(c[0])) + '</span>'; }).join('');
-      html += '<div class="bsec ' + (bt[0] === 'simple' ? 'simple' : 'calc') + '"><h5>' + (bt[0] === 'simple' ? '<span class="kind simple">' + tt(bt[1]) + '</span>' : '<span class="kind calc">' + tt('Calculator') + '</span> <span' + calcTip(bt[0]) + '>' + tt(bt[1]) + '</span>') + ' <span class="bsub" id="bt-' + i + '-' + bt[0] + '"></span></h5>' + (caps[bt[0]] || '') + '<div class="bl head t-' + bt[0] + '">' + head + '</div>' + rows + '</div>';
+    var lines = p.build || [], guide = typeGuide(p), cats = {};
+    lines.forEach(function (l, j) { var c = lineCat(l); (cats[c] = cats[c] || []).push(j); });
+    var multi = Object.keys(cats).length > 1;
+    var html = '<div class="bpanel"><div class="bhead"><b>' + tt('Value for {name}', { name: esc(p.name || tt('this application')) }) + '</b>' + (multi ? '' : '<span class="bsum" id="bsum-' + i + '"></span>') + (lines.length ? '<button type="button" class="b" data-act="bl-copy" data-i="' + i + '"' + C.tip('Copy these lines', 'Copies these benefit lines to every other included application that has none yet, so a group of similar applications starts from the same build-up.') + '>' + tt('Copy these lines to the other applications') + '</button>' : '') + '</div>';
+    LINE_CATS.forEach(function (c) {
+      if (!cats[c[0]]) return;
+      if (multi) html += '<div class="bgh"><b>' + tt(c[1]) + '</b><span class="bsub" id="bg-' + i + '-' + c[0] + '"></span></div>';
+      cats[c[0]].forEach(function (j) { html += builderLine(i, j, lines[j], guide); });
     });
     if (!lines.length) {
       var exLine = E.newLine('labour', { group: 'case', salary: cardGroupSalary(state.country, 'case', state.currency), mult: cardMult(state.country) }); exLine.users = 40; exLine.saved = 20; exLine.adopt = 80;
@@ -1517,7 +1538,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         '<div class="note">' + tt('For example: 40 case handlers saving 20% of their time, with 80% of them using the application, is worth about {amt} a year as freed capacity.', { amt: C.moneyShort(E.lineValue(exLine).rev) }) + '</div>' +
         '<p><button type="button" class="b pri" data-act="bl-example" data-i="' + i + '">' + tt('Start with this example') + '</button></p>';
     }
-    else html += (E.overlapping(lines) ? '<div class="note" style="color:var(--warn)">' + tt('Time saved per user or per transaction, and requests deflected, can count the same saving twice. Make sure each counts a different piece of work.') + '</div>' : '') + '<div class="note">Cash savings and switch-off savings are hard; freed capacity, revenue and risk are soft, and "Hard savings only" leaves them out. These are yearly figures once the application is live: going live sooner is already valued by the model, so do not count it again here.</div>';
+    html += '<div class="addrow"><input type="search" class="pickin" data-pick="' + i + '" autocomplete="off" placeholder="' + esc(tt('Add a benefit: search by what the application does, or choose')) + '"><div class="picklist" id="pl-' + i + '" hidden></div></div>';
+    if (lines.length) html += (E.overlapping(lines) ? '<div class="note" style="color:var(--warn)">' + tt('Time saved per user or per transaction, and requests deflected, can count the same saving twice. Make sure each counts a different piece of work.') + '</div>' : '') + '<div class="note">Cash savings and switch-off savings are hard; freed capacity, revenue and risk are soft, and "Hard savings only" leaves them out. These are yearly figures once the application is live: going live sooner is already valued by the model, so do not count it again here.</div>';
     return html + '</div>';
   }
   /* Show each built application's calculated figures: the three value cells, every line's yearly value, and the totals. */
@@ -1534,7 +1556,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         var us = document.querySelector('input[data-path="' + bpath(i, j, 'users') + '"]'); if (us) us.classList.toggle('warnin', num0(state.org && state.org.employees) > 0 && Number(l.users) > num0(state.org.employees));   // more users than the organisation has people
         var rb = $('bl-' + i + '-' + j); if (rb && rb.parentNode && l.type === 'revenue') rb.parentNode.setAttribute('data-tip', tt('Revenue before margin') + '::' + tt('{rev} a year; {profit} is the profit.', { rev: M(num0(l.units) * num0(l.per) * num0(l.uplift) / 100), profit: M(tot) }));
       });
-      BLOCKS.forEach(function (bt) { if (sub[bt[0]] !== undefined) set('bt-' + i + '-' + bt[0], M(sub[bt[0]]) + ' a year'); });
+      set('bg-' + i + '-cost', M(t.cost)); set('bg-' + i + '-rev', M(t.rev)); set('bg-' + i + '-risk', M(t.risk));
       set('bsum-' + i, tt('Cost savings {a} · Revenue and productivity {b} · Risk reduction {c}', { a: M(t.cost), b: M(t.rev), c: M(t.risk) }));
       set('apptot-' + i, M(t.cost + t.rev + t.risk));
     });
@@ -1633,6 +1655,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var sc = res && E.schedule(state, E.expectedTime(state, 'os'), 'os'), d0 = sc && sc.teamStart && sc.teamStart[g.id] !== undefined && state.startDate ? E.dateAtWeek(state, sc.teamStart[g.id]) : '';   // the date it works out to
     return '<label class="gl"' + C.tip(tt('Starts'), tt('When this team begins: some months after the start of the assessment (0 runs it alongside the first team), after the previous team finishes (0 is straight after), or after a date. The end date follows from its applications.')) + '>' + tt('Starts') + ' ' + moIn + ' ' + tt('months after') + ' ' + sel + more + (d0 ? ' <span class="note" data-gdate="' + esc(g.id) + '">' + esc(showDate(d0)) + '</span>' : '') + '</label>';
   }
+  var gqOpen = {};   // delivery teams whose developer-experience details are open: they open by themselves once the team is not at the default level
+  function gqIsOpen(g) { return gqOpen[g.id] !== undefined ? gqOpen[g.id] : (g.skill || 'experienced') !== 'experienced'; }
   function groupHeader(g, i, nGroups, open) {
     var q = g.mode === 'quote';
     return '<div class="dgh"><button type="button" class="b car" data-gtoggle="' + esc(g.id) + '" title="' + esc(tt('Show or hide the applications in this delivery team')) + '">' + (open ? '▾' : '▸') + '</button>' +
@@ -1641,8 +1665,9 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       '<label><input type="radio" name="gmode-' + i + '" data-gmode="' + i + '" value="quote"' + (q ? ' checked' : '') + '> ' + tt('Given cost') + '</label></div>' +
       (q ? '<label class="gl">' + tt('Delivery cost') + ' <i>' + esc(curSym()) + '</i> ' + inp('deliveryGroups.' + i + '.quote', 10000, 0) + '</label>' : '<label class="gl"' + C.tip('Rate level (%)', 'How the delivery people\'s cost compares with the reference rates for the country: 100% uses them as they are; a partner might be 140% and an internal team 85%.') + '>' + tt('Rate level (%)') + ' ' + inp('deliveryGroups.' + i + '.rate', 5, 10, 500) + '</label>') +
       startControls(g, i) +
+      '<button type="button" class="b gqt" data-gqtoggle="' + esc(g.id) + '"' + C.tip(tt('Developer quality'), tt('How quick and experienced this team is. A less experienced team is usually paid less but takes longer, so the saving does not carry through to the cost, and the extra time delays go-live and the value. The level sets the three figures beside it, which you can change: the team then becomes Custom. The levels are on the Defaults tab.')) + '>' + tt('Experience: {level}', { level: esc(tt(((SKILL_LEVELS.filter(function (x) { return x[0] === (g.skill || 'experienced'); })[0]) || ['custom', 'Custom'])[1])) }) + ' <span class="car">' + (gqIsOpen(g) ? '▾' : '▸') + '</span></button>' +
       (nGroups > 1 ? '<button class="b" data-act="gdel" data-i="' + i + '" title="' + esc(tt('Remove this delivery team')) + '">×</button>' : '') +
-      '<div class="gqrow">' + skillControl(g, i, q) + qualityRow(g, i, q) + '</div>' + '</div>';
+      '<div class="gqrow"' + (gqIsOpen(g) ? '' : ' hidden') + '>' + skillControl(g, i, q) + qualityRow(g, i, q) + '</div>' + '</div>';
   }
 
   /* The ratios behind the starting figures: how many people are in each role, and how volumes scale with customers or employees. All editable and resettable. */
@@ -1907,7 +1932,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
 
   function onInput(ev) {
     var t = ev.target;
-    if (t.dataset && t.dataset.ucsearch !== undefined) { ucSearch(parseInt(t.dataset.ucsearch, 10), t.value); return; }   // the application-type and calculator search
+    if (t.dataset && t.dataset.pick !== undefined) { openPick(parseInt(t.dataset.pick, 10), t.value); return; }   // the benefit picker's search
     if (t.dataset && t.dataset.sens) {   // the number, the chart and the takeaway follow the slider as it moves
       sensPct = parseInt(t.value, 10) || 25;
       var sv = $('sensv'); if (sv) sv.textContent = tt('Move each assumption by ±{n}%', { n: sensPct });
@@ -1962,6 +1987,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       setLoadCard(parseFloat(t.value));
     } else if (t.dataset && t.dataset.tpath) {
       setPath(t.dataset.tpath, t.value); schedule();
+      var nm = /^projectList\.(\d+)\.build\.(\d+)\.note$/.exec(t.dataset.tpath);   // the note icon shows whether there is a note, and its text on hover
+      if (nm) { var nbtn = document.querySelector('[data-note="' + nm[1] + '-' + nm[2] + '"]'); if (nbtn) { var hv = t.value.trim() !== ''; nbtn.classList.toggle('has', hv); nbtn.setAttribute('data-tip', tt('Why this figure') + '::' + (hv ? t.value : tt('Add a note: where the figure came from, or who confirmed it.'))); } }
     } else if (t.dataset && t.dataset.text) {
       state[t.dataset.text] = t.value;
 
@@ -1979,7 +2006,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function onChange(ev) {
     var t = ev.target, sp = t.dataset && t.dataset.special;
     if (t.dataset && t.dataset.gexpall !== undefined) { if (E.setTeamExperience(state, t.value)) { E.ensureGroups(state); buildProjects(); recalc(); } return; }   // the portfolio's experience level
-    if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { if (t.value === 'custom' && sg2.skill !== 'custom') { var cur0 = E.skillOf(state, sg2); sg2.custom = { pace: cur0.pace, discount: cur0.discount, enable: cur0.enable }; } sg2.skill = t.value; E.ensureGroups(state); buildProjects(); buildInputs(); recalc(); } return; }   // a team's experience with OutSystems
+    if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { if (t.value === 'custom' && sg2.skill !== 'custom') { var cur0 = E.skillOf(state, sg2); sg2.custom = { pace: cur0.pace, discount: cur0.discount, enable: cur0.enable }; } sg2.skill = t.value; gqOpen[sg2.id] = true; E.ensureGroups(state); buildProjects(); buildInputs(); recalc(); } return; }   // a team's experience with OutSystems
     if (t.dataset && t.dataset.orgind !== undefined) { state.org.industry = t.value; E.applyOrgDefaults(state); buildInputs(); buildProjects(); recalc(); return; }   // the industry reshapes the starting figures
     if (t.dataset && t.dataset.usecase !== undefined) { setAppType(parseInt(t.dataset.usecase, 10), t.value); return; }   // an application's type
     if (t.dataset && t.dataset.text === 'startDate') { state.startDate = t.value; if (!t.value) state.licenceStart = ''; buildAssumptions(); buildProjects(); recalc(); return; }   // the date controls that depend on it are rebuilt
@@ -3639,6 +3666,9 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     });
     document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && yrCur) closeYr(); });
     document.addEventListener('input', onInput);
+    document.addEventListener('focusin', function (ev) { var t = ev.target; if (t && t.dataset && t.dataset.pick !== undefined) openPick(parseInt(t.dataset.pick, 10), t.value); });
+    document.addEventListener('click', function (ev) { var t = ev.target; if (!(t && t.closest && t.closest('.addrow'))) closePicks(); });
+    document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closePicks(); });
     document.addEventListener('focusout', function (ev) { var t = ev.target; if (t.dataset && t.dataset.rcg) { t.value = fmtFixed(cardGroupSalary(rcSel, t.dataset.rcg) * cardMult(rcSel) / (Number(state.team.hours) * 52), rateDec(R.byId(rcSel).cur)); return; } if (t.dataset && t.dataset.rc) { t.value = fmtFixed(rcLocal(rcSel)[t.dataset.rc], rateDec(R.byId(rcSel).cur)); return; } if (t.dataset && t.dataset.fmt) { var sc = t.dataset.scope === 'defaults' ? DEFAULTS : state; t.value = fmtMoney(getPath(t.dataset.path, sc)); } });
     document.addEventListener('change', onChange);
     makeSims();
@@ -3683,6 +3713,11 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       else if (t.closest && t.closest('[data-base]')) { setBase(t.closest('[data-base]').dataset.base); }
       else if (t.closest && t.closest('[data-host]')) { setHosting(t.closest('[data-host]').dataset.host); }
       else if (t.closest && t.closest('[data-case]')) { t = t.closest('[data-case]'); if (t.dataset.case === 'custom') { state.custom = state.custom || { advantage: 1, value: 1 }; state.realiseCustom = true; state.realise = { advantage: state.custom.advantage, value: state.custom.value }; } else { delete state.realiseCustom; state.realise = { advantage: E.casesOf(state)[t.dataset.case].advantage, value: E.casesOf(state)[t.dataset.case].value }; } recalc(); buildAssumptions(); }   // the Assumptions screen shows the percentages now in use
+      else if (t.dataset && t.dataset.note) { var nbx = $('nb-' + t.dataset.note); if (nbx) { nbx.hidden = !nbx.hidden; if (!nbx.hidden) { var nta = nbx.querySelector('textarea'); if (nta) nta.focus(); } } }   // open or close a line's note
+      else if (t.dataset && t.dataset.gqtoggle) {   // a delivery team's developer experience details
+        var gqg = E.ensureGroups(state).filter(function (x) { return x.id === t.dataset.gqtoggle; })[0];
+        if (gqg) { gqOpen[gqg.id] = !gqIsOpen(gqg); var gqd = t.closest('.dgh'), gqr = gqd && gqd.querySelector('.gqrow'); if (gqr) gqr.hidden = !gqOpen[gqg.id]; var gqc = t.querySelector('.car'); if (gqc) gqc.textContent = gqOpen[gqg.id] ? '▾' : '▸'; }
+      }
       else if (t.dataset && t.dataset.appfold !== undefined) { var fi = parseInt(t.dataset.appfold, 10); appOpen[fi] = !isAppOpen(fi, state.projectList.length); applyAppFold(); }
       else if (t.dataset && t.dataset.appfoldall) { state.projectList.forEach(function (p, j) { appOpen[j] = t.dataset.appfoldall === 'open'; }); applyAppFold(); }
       else if (t.dataset && t.dataset.gtoggle) {

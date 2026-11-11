@@ -245,6 +245,22 @@
   .bl .bc { text-align: right; } .bl .ro { font-size: 12px; }
   .bl input, .bl select { width: 100%; min-width: 0; } .bl .b { padding: 3px 0; }
   .bl input.warnin { border-color: var(--warn); }
+  /* one row per benefit line: type, labelled formula figures, yearly amount, note icon, remove */
+  .bl2 { display: grid; grid-template-columns: 150px minmax(0, 1fr) 110px 30px 30px; gap: 4px 8px; align-items: end; margin: 6px 0; padding: 6px 0; border-top: 1px dashed var(--line); }
+  .bl2 .bty { align-self: center; } .bl2 .bty select { width: 100%; } .bl2 .bty-n { font-size: 12.5px; font-weight: 600; cursor: help; }
+  .bl2 .bfs { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: flex-end; }
+  .bl2 .fx { display: flex; flex-direction: column; gap: 1px; font-size: 10.5px; color: var(--muted); cursor: help; line-height: 1.2; } .bl2 .fx input { width: 76px; } .bl2 .fx.fxw input { width: 150px; } .bl2 .fx select { max-width: 150px; }
+  .bl2 .bamt { text-align: right; align-self: center; } .bl2 .bamt input { width: 100%; text-align: right; } .bl2 .bamt .ro { font-size: 13px; }
+  .bl2 .b { padding: 3px 0; align-self: center; } .bl2 .bnb { opacity: .55; } .bl2 .bnb.has { opacity: 1; color: var(--os); border-color: var(--os); }
+  .bl2 .bnotebox { grid-column: 1 / -1; } .bl2 .bnotebox[hidden] { display: none; } .bl2 .bnotebox textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; }
+  .bl2 input.warnin { border-color: var(--warn); }
+  .bgh { display: flex; gap: 10px; align-items: baseline; margin: 12px 0 0; font-size: 12.5px; } .bgh .bsub { margin-left: 0; }
+  .addrow { position: relative; margin: 8px 0 4px; } .addrow .pickin { width: 100%; box-sizing: border-box; }
+  .picklist { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; max-height: 340px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25); } .picklist[hidden] { display: none; }
+  .pickgrp { padding: 6px 10px 2px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .pickopt { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px dashed var(--line); padding: 6px 10px; font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer; } .pickopt:hover, .pickopt:focus { background: var(--panel2); }
+  .dgh .gqrow[hidden] { display: none; } .dgh .gqt { font-size: 12px; }
+  @media (max-width: 900px) { .bl2 { grid-template-columns: minmax(0, 1fr) 110px 30px 30px; } .bl2 .bty, .bl2 .bfs { grid-column: 1 / -1; } .bl2 .bamt { grid-column: 2; } }
   .ro.locked[data-go] { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
   .ro.locked[data-go]:hover { color: var(--text); }
   #modal { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; }
