@@ -1175,7 +1175,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   var HOSTS = { paas: 'ODC (PaaS)', 'paas-sentry': 'ODC + Sentry (PaaS)', self: 'ODC Self-managed', 'self-diy': 'ODC Self-managed + Assured' };   // one set of names, used everywhere
   var CFG_ROWS = [['paas', HOSTS.paas, 'paas'], ['paas-sentry', HOSTS['paas-sentry'], 'sentry'], ['self', HOSTS.self, 'self'], ['self-diy', HOSTS['self-diy'], 'diy']];   // key, short name, key in hostingCompare
-  function renderInfraCompare() {
+  function renderInfraCompare() { inView(infraCompareCore); }
+  function infraCompareCore() {
     var ch = $('infra-chart'), tb = $('infra-table');
     if (!ch) return;
     var M = C.money, fte = function (x) { return Math.round(x * 100) / 100; }, host = E.hostingOf(state), osName = HOSTS[cfgKey()], altName = esc(altShort());
@@ -1558,6 +1559,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function syncBuild() {
     var list = E.ensureList(state);
     var M = C.money, set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
+    var rmTot = { a: { n: 0, v: 0 }, b: { n: 0, v: 0 } };
     list.forEach(function (p, i) {
       var t = E.buildValue(p), sub = {};
       p.build = p.build || [];
@@ -1571,7 +1573,9 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       set('bg-' + i + '-cost', M(t.cost)); set('bg-' + i + '-rev', M(t.rev)); set('bg-' + i + '-risk', M(t.risk));
       set('bsum-' + i, tt('Cost savings {a} · Revenue and productivity {b} · Risk reduction {c}', { a: M(t.cost), b: M(t.rev), c: M(t.risk) }));
       set('apptot-' + i, M(t.cost + t.rev + t.risk));
+      if (p.include !== false) { var side = p.phase === 'roadmap' ? rmTot.b : rmTot.a; side.n++; side.v += t.cost + t.rev + t.risk; }
     });
+    set('rmsum', tt('Today: {a} applications, {av} a year · Roadmap: {b} applications, {bv} a year', { a: rmTot.a.n, av: M(rmTot.a.v), b: rmTot.b.n, bv: M(rmTot.b.v) }));
   }
   function num0(x) { var n = parseFloat(x); return isFinite(n) ? n : 0; }
 
@@ -1593,15 +1597,16 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function buildProjects() {
     var cur = state.currency, list = E.ensureList(state), groups = E.ensureGroups(state), gcol = groups.length > 1;
     E.migrateMonths(state); E.deriveMonths(state);
-    var head = '<div class="apph head' + (gcol ? ' g' : '') + '"><span></span><span></span><span' + C.tip('Application or group', 'A row is one application, or a group of related applications that are delivered together. Name it either way. The portfolio starts as one row that stands for all of them.') + '>' + tt('Application or group of applications') + '</span><span' + C.tip('Type', 'What kind of application this is, such as a self-service portal, digital onboarding, claims handling or permits. Picking a type adds the usual calculators for it with placeholder numbers to replace. Optional: leave it blank to build the value yourself.') + '>' + tt('Type') + '</span>' + (gcol ? '<span' + C.tip('Delivery team', 'Who delivers this application, and at what cost level. Set up the delivery teams below.') + '>' + tt('Delivery team') + '</span>' : '') +
+    var rm = !!(state.roadmap && state.roadmap.on);
+    var head = '<div class="apph head' + (gcol ? ' g' : '') + (rm ? ' rm' : '') + '"><span></span><span></span><span' + C.tip('Application or group', 'A row is one application, or a group of related applications that are delivered together. Name it either way. The portfolio starts as one row that stands for all of them.') + '>' + tt('Application or group of applications') + '</span>' + (rm ? '<span' + C.tip(tt('When'), tt('Today: built now, the first step. Roadmap: built later, and it needs the extra licence set above. The roadmap applications are built after today\'s.')) + '>' + tt('When') + '</span>' : '') + '<span' + C.tip('Type', 'What kind of application this is, such as a self-service portal, digital onboarding, claims handling or permits. Picking a type adds the usual calculators for it with placeholder numbers to replace. Optional: leave it blank to build the value yourself.') + '>' + tt('Type') + '</span>' + (gcol ? '<span' + C.tip('Delivery team', 'Who delivers this application, and at what cost level. Set up the delivery teams below.') + '>' + tt('Delivery team') + '</span>' : '') +
       '<span' + C.tip('Months', 'How long the OutSystems team is actively working on this application (or group): design, build and fixes, not time waiting in review queues. One team delivers the applications one after another, so the portfolio\'s months are the total.') + '>' + tt('Months') + '</span>' +
       '<span' + C.tip('Developers', 'OutSystems developers on this application. The architects, testers, analysts and others they imply come from the role mix. The alternative\'s team is worked out from this.') + '>' + tt('Developers') + '</span>' +
       '<span' + C.tip('Value per year', tt('The yearly value of this application once it is live, added up from its calculators, in {cur}.', { cur: cur })) + '>' + tt('Value per year') + '</span>' +
       '<span' + C.tip('Delivery cost', 'What the OutSystems delivery team costs for this application: its months, developers and the delivery team\'s rate level. Hover a figure for the alternative\'s cost.') + '>' + tt('Delivery cost') + '</span><span></span></div>';
     var appCard = function (p, i) {
       var on = p.include !== false, base = 'projectList.' + i, open = isAppOpen(i, list.length);
-      return '<div class="appc' + (on ? '' : ' off') + (open ? '' : ' closed') + '" data-i="' + i + '"><div class="apph' + (gcol ? ' g' : '') + '"><button type="button" class="b car" data-appfold="' + i + '" title="' + esc(tt('Show or hide the value details')) + '">' + (open ? '▾' : '▸') + '</button><input type="checkbox" data-incl="' + i + '"' + (on ? ' checked' : '') + C.tip('Include in the assessment', 'Switch off to leave this application out of every number and chart.') + '>' +
-        '<input type="text" data-tpath="' + base + '.name" value="' + esc(p.name) + '">' + typeSelect(i, p) +
+      return '<div class="appc' + (on ? '' : ' off') + (open ? '' : ' closed') + '" data-i="' + i + '"><div class="apph' + (gcol ? ' g' : '') + (rm ? ' rm' : '') + '"><button type="button" class="b car" data-appfold="' + i + '" title="' + esc(tt('Show or hide the value details')) + '">' + (open ? '▾' : '▸') + '</button><input type="checkbox" data-incl="' + i + '"' + (on ? ' checked' : '') + C.tip('Include in the assessment', 'Switch off to leave this application out of every number and chart.') + '>' +
+        '<input type="text" data-tpath="' + base + '.name" value="' + esc(p.name) + '">' + (rm ? bsel(base + '.phase', [['today', tt('Today')], ['roadmap', tt('Roadmap')]], p.phase === 'roadmap' ? 'roadmap' : 'today') : '') + typeSelect(i, p) +
         (gcol ? '<select data-bsel="' + base + '.group">' + groups.map(function (g) { return '<option value="' + esc(g.id) + '"' + (g.id === p.group ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select>' : '') + inp(base + '.months', 0.5, 0.1, 60) + inp(base + '.devs', 1, 1, 200) +
         '<b class="ro" id="apptot-' + i + '"></b><b class="ro" id="appcost-' + i + '"></b>' +
         (list.length > 1 ? '<button class="b" data-act="remove" data-i="' + i + '" title="' + esc(tt('Remove this application')) + '">×</button>' : '<span></span>') + '</div>' + builderPanel(i, p) + '</div>';
@@ -1611,10 +1616,16 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       return '<div class="dgroup' + (open ? '' : ' closed') + '" data-g="' + esc(g.id) + '">' + groupHeader(g, gi, groups.length, open) +
         '<div class="dgbody"><div class="appwrap">' + head + inGroup + '</div><p><button class="b" data-act="add" data-g="' + esc(g.id) + '">' + tt('Add application') + '</button>' + (list.length > 1 ? ' <a class="more" data-appfoldall="open">' + tt('Expand all') + '</a> · <a class="more" data-appfoldall="close">' + tt('Collapse all') + '</a>' : '') + '</p></div></div>';
     }).join('');
+    var rmBar = '<div class="rmbar"><label class="chk"' + C.tip(tt('Compare with a roadmap'), tt('Tag each application as Today or Roadmap to compare OutSystems today with OutSystems plus the roadmap, each against the alternative building the same applications. The roadmap needs an extra licence, set here.')) + '><input type="checkbox" data-rmon="1"' + (rm ? ' checked' : '') + '> ' + tt('Compare with a roadmap') + '</label>' +
+      (rm ? '<div class="rmpanel">' +
+        row('Extra licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.os', 5000, 0), 'The extra yearly OutSystems platform licence the roadmap needs, on top of the licence for today\'s applications.', 'roadmap.licence.os') +
+        row('Extra Sentry licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.sentry', 5000, 0), 'The extra yearly Sentry licence the roadmap needs, if any.', 'roadmap.licence.sentry') +
+        '<div class="note">' + tt('The extra licence is charged each year from when the first roadmap application starts. Roadmap applications are built after today\'s within each team. Hosting, operating people and the alternative\'s tooling stay the same unless you change them.') + '</div>' +
+        (E.roadmapOn(state) ? '<div class="note" id="rmsum"></div>' : '<div class="note" style="color:var(--warn)">' + tt('To compare, leave at least one included application as Today and tag at least one as Roadmap.') + '</div>') + '</div>' : '') + '</div>';
     $('cfg-applications').innerHTML = page('Applications', tt('The portfolio starts as one application that stands for all of them, with its value as simple calculators for cost savings, revenue uplift and risk reduction. Add detailed calculators, or more applications, when you want more precision; nothing already entered is thrown away. Applications are delivered one after another by one team.'),
       '<div class="card" style="grid-column:1/-1"><div class="note" style="margin:0 0 8px">' +
       tt('A delivery team is whoever delivers some of the applications (an internal team, a partner or a supplier), with its own cost level. Developer based: the developers and roles are costed at the reference rates times the rate level (a partner might be 140%, an internal team 85%). Given cost: you enter what its applications will cost and the rate level follows from it. Applications are still delivered one after another.') + '</div>' +
-      blocks + '<div class="note" id="projsum"></div><p><button class="b" data-act="gadd">' + tt('Add delivery team') + '</button></p></div>');
+      rmBar + blocks + '<div class="note" id="projsum"></div><p><button class="b" data-act="gadd">' + tt('Add delivery team') + '</button></p></div>');
     updateProjectSummary(); syncBuild(); updateRateNote();
   }
   var gClosed = {};   // delivery groups whose applications are folded away
@@ -2017,6 +2028,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function onChange(ev) {
     var t = ev.target, sp = t.dataset && t.dataset.special;
+    if (t.dataset && t.dataset.rmon !== undefined) { state.roadmap = state.roadmap || { on: false, licence: { os: 0, sentry: 0 } }; state.roadmap.on = !!t.checked; buildProjects(); recalc(); return; }   // compare with a roadmap
+    if (t.dataset && t.dataset.asck !== undefined) { asSel[t.dataset.asck] = !!t.checked; return; }   // an assessment ticked for deleting
     if (t.dataset && t.dataset.gexpall !== undefined) { if (E.setTeamExperience(state, t.value)) { E.ensureGroups(state); buildProjects(); recalc(); } return; }   // the portfolio's experience level
     if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { if (t.value === 'custom' && sg2.skill !== 'custom') { var cur0 = E.skillOf(state, sg2); sg2.custom = { pace: cur0.pace, discount: cur0.discount, enable: cur0.enable }; } sg2.skill = t.value; gqOpen[sg2.id] = true; E.ensureGroups(state); buildProjects(); buildInputs(); recalc(); } return; }   // a team's experience with OutSystems
     if (t.dataset && t.dataset.orgind !== undefined) { state.org.industry = t.value; E.applyOrgDefaults(state); buildInputs(); buildProjects(); recalc(); return; }   // the industry reshapes the starting figures
@@ -2165,7 +2178,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       series: [
         { name: 'OutSystems', color: 'var(--os)', data: r.os.cum, width: 3 },
         { name: alt, color: 'var(--alt)', data: r.alt.cum, dash: true, width: 2.5 }
-      ],
+      ].concat(rmRuns ? [{ name: viewScenario() === 'roadmap' ? tt('OutSystems today') : tt('OutSystems + roadmap'), color: 'color-mix(in srgb, var(--os) 45%, transparent)', data: rmRuns[viewScenario() === 'roadmap' ? 'today' : 'roadmap'].os.cum, dash: true, width: 2 }] : []),
       markers: [
         { week: r.os.paybackWeek, label: 'OutSystems payback ' + months(r.os.paybackMonths, r.os.paybackWeek), color: 'var(--os)', row: 0,
           tip: 'Cumulative value minus cost turns positive here and stays positive.' },
@@ -2411,8 +2424,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var lastOs = 0, lastAlt = 0;
     r.os.projects.forEach(function (p) { lastOs = Math.max(lastOs, p.goLive); });
     r.alt.projects.forEach(function (p) { lastAlt = Math.max(lastAlt, p.goLive); });
-    return [
-      { id: 'summary', tab: 'The answer', step: 1, title: 'Economic summary', full: false, html: '<div class="tiles t3">' + facts.tiles.slice(1).map(function (t) { return tile(t.k, t.v, t.s, t.tip, t.to, t.d); }).join('') + '</div>',
+    var defsList = [
+      { id: 'summary', tab: 'The answer', step: 1, title: 'Economic summary', full: false, html: '<div class="tiles t3">' + facts.tiles.slice(1).map(function (t) { return tile(t.k, t.v, t.s, t.tip, t.to, t.d, t.rm); }).join('') + '</div>',
         cap: 'The headline figures for this assessment: what OutSystems delivers against the alternative. Hover a card for how it is worked out.',
         read: 'Each card compares OutSystems with the alternative. Net present value advantage is the value of everything OutSystems delivers minus everything it costs, in today\'s terms, less the same for the alternative. Return on investment and payback show how much and how fast it earns back what it costs. Peak cash outlay is the most cash out before it turns positive. Use the tabs above to see where each number comes from.',
         take: facts.take,
@@ -2447,12 +2460,62 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         read: 'Each approach has four rows. Value is what the applications earn once live (it ramps up after go-live). Cost is shown as a negative. Net is value minus cost, and Cumulative net is the running total. The bottom block turns everything into present value using the discount rate, and the last line is the net value advantage.',
         take: tt('Cumulative net after {yrs} years is {os} for OutSystems against {alt} for {name}. The present-value advantage is {adv}.', { yrs: state.horizon, os: MS(r.os.cum[r.os.W - 1]), alt: MS(r.alt.cum[r.alt.W - 1]), name: alt, adv: MS(r.advantage) }) }
     ];
+    if (rmRuns) {   // with a roadmap: how the advantage builds as applications are added, and what the roadmap adds
+      var T0 = rmRuns.today, F0 = rmRuns.roadmap, AD = rmRuns.adds, ix = function (id) { for (var q = 0; q < defsList.length; q++) if (defsList[q].id === id) return q; return -1; };
+      defsList.splice(ix('bridge'), 0, { id: 'rmbuild', tab: 'The roadmap', step: 5, title: 'Advantage as applications are added', full: false, svg: svgRmBuild(),
+        cap: 'The net present value advantage over the alternative as each application is built, in build order: today\'s first, then the roadmap, with the roadmap licence from its first application.',
+        read: 'Each bar is the advantage if the portfolio stopped after that application. The first applications may show little, or none, because the platform and its licence are paid for before there is much to build on. As more applications are built the advantage grows. The dashed line marks where the roadmap, and its extra licence, begin.',
+        take: tt('Today\'s applications leave OutSystems {a} ahead of {alt}; with the roadmap the advantage is {b}. The roadmap adds {c} net, after {lic} of extra licence.', { a: MS(T0.advantage), alt: alt, b: MS(F0.advantage), c: MS(AD.npv), lic: MS(AD.pvLicence) }) });
+      defsList.splice(ix('bridge') + 1, 0, { id: 'rmadds', tab: 'What the roadmap adds', min: 'case', title: 'What the roadmap adds', full: false, svg: svgRmAdds(),
+        cap: 'OutSystems today to OutSystems with the roadmap: the extra value, the extra delivery and running cost, and the extra licence. Every bar adds up.',
+        read: 'Start with the grey bar: the net present value of OutSystems for today\'s applications. Green is value the roadmap adds; red is what it costs, shown separately for the extra licence and for everything else. The last bar is OutSystems with the roadmap. The roadmap is worth doing when the green outweighs the red.',
+        take: tt('The roadmap adds {value} of value and {other} of delivery and running cost, plus {lic} of extra licence: a net {npv} over {yrs} years, in present value.', { value: MS(AD.pvValue), other: MS(AD.pvOther), lic: MS(AD.pvLicence), npv: MS(AD.npv), yrs: state.horizon }) });
+    }
+    return defsList;
+  }
+  /* The advantage as applications are added one at a time (today's first, then the roadmap), a bar for each. */
+  function niceStep(x) { var e = Math.pow(10, Math.floor(Math.log(x) / Math.LN10)), f = x / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; }
+  function svgRmBuild() {
+    var pts = E.buildUp(baseState || state) || [], alt = altShort(), MS = C.moneyShort, M = C.money;
+    if (!pts.length) return '';
+    var w = 700, rowH = 34, m = { l: 220, r: 70, t: 36, b: 14 }, pw = w - m.l - m.r, lo = 0, hi = 0, b = '';
+    pts.forEach(function (p) { lo = Math.min(lo, p.advantage); hi = Math.max(hi, p.advantage); });
+    if (hi - lo < 1) hi = lo + 1;
+    var step = niceStep((hi - lo) / 4), a0 = Math.floor(lo / step) * step, a1 = Math.ceil(hi / step) * step, h = m.t + pts.length * rowH + m.b;
+    var X = function (v) { return m.l + (v - a0) / (a1 - a0) * pw; }, txt = function (x, y, str, anchor, size, weight, color) { return '<text x="' + x + '" y="' + y + '" font-size="' + (size || 11) + '" text-anchor="' + (anchor || 'start') + '" style="fill:var(' + (color || '--muted') + ')"' + (weight ? ' font-weight="' + weight + '"' : '') + '>' + C.esc(str) + '</text>'; };
+    b += txt(8, 14, tt('Net present value advantage over {alt}, as each application is added', { alt: alt }), 'start', 10);
+    for (var t = a0; t <= a1 + step / 2; t += step) b += '<line x1="' + X(t) + '" x2="' + X(t) + '" y1="' + (m.t - 4) + '" y2="' + (h - m.b) + '" style="stroke:var(' + (Math.abs(t) < step / 1e6 ? '--muted' : '--grid') + ')"/>' + txt(X(t), m.t - 10, MS(t), 'middle', 10);
+    var firstRoad = -1;
+    pts.forEach(function (p, i) {
+      var y = m.t + i * rowH + rowH * 0.18, hh = rowH * 0.64, x0 = X(0), x1 = X(p.advantage), nm = p.n + '. ' + (p.name.length > 30 ? p.name.slice(0, 29) + '…' : p.name);
+      if (p.phase === 'roadmap' && firstRoad < 0) firstRoad = i;
+      b += txt(m.l - 10, y + hh / 2 + 4, nm, 'end', 11, 0, '--text');
+      b += '<rect x="' + Math.min(x0, x1) + '" y="' + y + '" width="' + Math.max(1.5, Math.abs(x1 - x0)) + '" height="' + hh + '" rx="2" style="fill:' + (p.phase === 'roadmap' ? 'var(--b2)' : 'var(--os)') + '"' +
+        C.tip(nm + ': ' + M(p.advantage), tt('Net present value advantage over {alt} with the first {n} applications built, in build order.', { alt: alt, n: p.n }) + (p.phase === 'roadmap' ? ' ' + tt('The roadmap licence is included.') : '')) + '/>';
+      b += txt(p.advantage >= 0 ? x1 + 6 : x1 - 6, y + hh / 2 + 4, MS(p.advantage), p.advantage >= 0 ? 'start' : 'end', 11, 700, '--text');
+    });
+    if (firstRoad > 0) { var ly = m.t + firstRoad * rowH; b += '<line x1="' + 8 + '" x2="' + (w - 8) + '" y1="' + ly + '" y2="' + ly + '" style="stroke:var(--muted)" stroke-dasharray="5 4"/>' + txt(w - 10, ly - 4, tt('Roadmap and its extra licence start here'), 'end', 10); }
+    return '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%;height:auto;display:block" role="img" aria-label="' + C.esc(tt('Advantage as applications are added')) + '" font-family="Arial, Helvetica, sans-serif">' + b + '</svg>';
+  }
+  /* OutSystems today to OutSystems with the roadmap, as a bridge. */
+  function svgRmAdds() {
+    var T0 = rmRuns.today, F0 = rmRuns.roadmap, AD = rmRuns.adds, yrs = state.horizon;
+    return C.waterfall({
+      start: { label: 'OutSystems today', value: T0.os.npv, tip: tt('Present value of everything OutSystems delivers for today\'s applications minus everything it costs over {n} years.', { n: yrs }) },
+      end: { label: 'OutSystems + roadmap', value: F0.os.npv, tip: tt('The same measure with the roadmap built as well. The difference from the left-hand bar is what the roadmap adds.') },
+      items: [
+        { label: 'Value from the roadmap applications', delta: AD.pvValue, hard: false, tip: tt('Present value of what the roadmap applications earn once live.') },
+        { label: 'Delivery and running cost of the roadmap', delta: -AD.pvOther, hard: true, tip: tt('Present value of building and running the roadmap applications: the delivery team, AI tokens, upkeep and the rest, apart from the extra licence.') },
+        { label: 'Extra licence for the roadmap', delta: -AD.pvLicence, hard: true, tip: tt('Present value of the extra OutSystems licence (and Sentry) the roadmap needs.') }
+      ].filter(function (it) { return Math.abs(it.delta) > 0.5; }), label: 'What the roadmap adds'
+    });
   }
 
   /* A headline tile; with `to` it opens the sub-tab that breaks the figure down. */
-  function tile(k, v, s, tipKey, to, d) {   // d: an optional difference to show as a pill, { t: text, good: true when OutSystems is better }
+  function tile(k, v, s, tipKey, to, d, rm) {   // d: an optional difference to show as a pill, { t: text, good: true when OutSystems is better }
     var hp = HELP[tipKey].split('::');
     return '<div class="tile"' + (to ? ' data-sub="' + to + '"' : '') + C.tip(hp[0], hp[1] + (to ? '\n\n' + tt('Click for the breakdown.') : '')) + '><div class="k">' + tt(k) + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div>' +
+      (rm ? '<div class="rmv"><span' + (viewScenario() === 'today' ? ' class="on"' : '') + '>' + tt('Today') + ' <b>' + rm.today + '</b></span><span' + (viewScenario() === 'roadmap' ? ' class="on"' : '') + '>' + tt('With roadmap') + ' <b>' + rm.roadmap + '</b></span></div>' : '') +
       (d ? '<div class="d ' + (d.same ? 'same' : d.good ? 'good' : 'bad') + '">' + (d.same ? '● ' : d.good ? '▲ ' : '▼ ') + d.t + '</div>' : '') + '</div>';
   }
   function openSub(id) {
@@ -2543,13 +2606,22 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       tt('OutSystems platform licence {amt} a year ({host})', { amt: MS(state.platform.os), host: host }),
       tt('{yrs}, future years reduced by a {rate}% discount rate', { yrs: yrs, rate: state.rate }),
       tt('{case} scenario', { case: cs ? tt(E.casesOf(state)[cs].label) : tt('Custom') })];
+    var both = bothFacts();   // with a roadmap, each card also shows its figure for both scenarios
+    if (both) tiles.forEach(function (t, i) { t.rm = { today: both.today.tiles[i].v, roadmap: both.roadmap.tiles[i].v }; });
     return { tiles: tiles, headline: headline, take: take, based: based };
+  }
+  function bothFacts() {
+    if (!rmRuns || inFacts || !baseState) return null;
+    var keepS = state, keepR = res, out = {}; inFacts = true;
+    try { ['today', 'roadmap'].forEach(function (w) { state = E.scenarioState(baseState, w); res = rmRuns[w]; out[w] = summaryFacts(); }); } finally { state = keepS; res = keepR; inFacts = false; }
+    return out;
   }
   function renderSummary(defs) {
     var named = state.company && state.company.trim();
     var vw = viewer(defs);
     $('sumsteps').innerHTML = vw.steps;   // the sub-tab row sits above the scenario row and the example-numbers banner, and stays in view
     var cs0 = E.caseOf(state), ctxLine = '<div class="ctxline">' + esc(tt('{case} scenario', { case: cs0 ? tt(E.casesOf(state)[cs0].label) : tt('Custom') }) + ' · ' + (state.horizon === 1 ? tt('1 year') : tt('{n} years', { n: state.horizon })) + ' · ' + (state.hardOnly ? tt('Hard savings only') : tt('Soft benefits included'))) + '</div>';
+    if (rmRuns) ctxLine += '<div class="rmtoggle"><span class="seg" role="group" aria-label="' + esc(tt('Scenario in view')) + '"><button type="button" data-rmview="today"' + (viewScenario() === 'today' ? ' class="on"' : '') + '>' + esc(tt('OutSystems today')) + '</button><button type="button" data-rmview="roadmap"' + (viewScenario() === 'roadmap' ? ' class="on"' : '') + '>' + esc(tt('OutSystems + roadmap')) + '</button></span></div>';
     $('summary').innerHTML = (named ? '' : '<div class="exbanner" role="button" tabindex="0" data-focusname="1"' + C.tip(tt('Example numbers'), tt('Click to go to the name box and name the assessment.')) + '><b>' + tt('Example numbers') + '</b> ' + tt('These are placeholders, not the customer\'s figures. Name the assessment and replace them.') + '</div>') + ctxLine + vw.body +
       '<p class="note">' + tt('All figures use illustrative placeholder defaults, not benchmarks. Value is identical for both approaches; the advantage comes from cost and from reaching production sooner.') + '</p>';
     foldBoxes($('summary'));
@@ -3004,29 +3076,44 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
 
   /* ----------------------------------------------------------------- recalc */
+  /* Today and the roadmap. rmRuns holds both runs while a comparison is on; the scenario in view is kept with the assessment. inView runs something that draws results (it needs the scenario's
+   * assessment, and the results already computed for it) outside recalc. */
+  var rmRuns = null, baseState = null, inFacts = false;
+  function viewScenario() { return state.roadmap && state.roadmap.view === 'roadmap' ? 'roadmap' : 'today'; }
+  function inView(fn) {
+    if (!rmRuns || baseState) return fn();
+    var real = state; baseState = real; state = E.scenarioState(real, viewScenario());
+    try { return fn(); } finally { state = real; baseState = null; }
+  }
   function recalc() {
     C.setCurrency(state.currency, curOpts());
     E.ensureList(state); E.migrateMonths(state); E.deriveMonths(state);
-    res = E.run(state);
+    var real = state;   // with a roadmap, the results are drawn for the scenario in view (today, or with the roadmap); the inputs always stay on the assessment itself
+    rmRuns = E.roadmapOn(state) ? E.runScenarios(state) : null;
+    res = rmRuns ? rmRuns[viewScenario()] : E.run(state);
+    if (rmRuns) { baseState = real; state = E.scenarioState(real, viewScenario()); }
+    try {
     var defs = chartDefs();
     renderSummary(defs);
     renderOnepage(); if (pipeSub === 'time') renderPipeTime();
-    syncBuild(); syncYr(); refreshSdlc(); updateRateNote(); updateProjectSummary();
+    refreshSdlc();
     updateCaseUi();
-    scheduleSave();
-    syncTitle();
     var dr = $('deliveryReadout'), ro = $('teamReadout'), M = C.money, an = esc(altShort());
     if (dr) dr.innerHTML = tt('Delivery team cost, whole portfolio: {os} OutSystems vs {alt} {an}. The team is active {wo} vs {wa} weeks per application.', { os: '<b>' + M(res.os.sumCost.team) + '</b>', alt: '<b>' + M(res.alt.sumCost.team) + '</b>', an: an, wo: f1(res.os.T.active), wa: f1(res.alt.T.active) });
     if (ro) ro.innerHTML = tt('OutSystems: {od} developers, {op} people, {ow} a week. {an}: {ad} developers, {ap} people, {aw} a week.', { od: '<b>' + f1(E.devsFor(state, 'os')) + '</b>', op: '<b>' + f1(E.devsFor(state, 'os') * E.peoplePerDev(state, 'os')) + '</b>', ow: '<b>' + M(E.weekCost(state, 'os')) + '</b>', an: an, ad: '<b>' + f1(E.devsFor(state, 'alt')) + '</b>', ap: '<b>' + f1(E.devsFor(state, 'alt') * E.peoplePerDev(state, 'alt')) + '</b>', aw: '<b>' + M(E.weekCost(state, 'alt')) + '</b>' });
     updateBreakdownTotals();
     renderTeam();
+    var ps = $('pstages');
+    if (ps) ps.innerHTML = svgStages();
+    updateStageTips();
+    } finally { state = real; baseState = null; }
+    syncBuild(); syncYr(); updateRateNote(); updateProjectSummary();
+    scheduleSave();
+    syncTitle();
     document.querySelectorAll('[data-path][data-scope="state"]').forEach(function (el) {
       if (el !== document.activeElement) { var v = getPath(el.dataset.path); if (el.dataset.yr && E.hasPattern(getPat(el.dataset.yr))) v = yrMeanOf(el.dataset.yr); if (el.dataset.pct) v = Math.round(v * 1000) / 10; if (el.dataset.fmt) v = fmtMoney(v); if (String(el.value) !== String(v)) el.value = v; }
       if (GENERAL[el.dataset.path]) el.classList.toggle('ovr', isOverridden(el.dataset.path));
     });
-    var ps = $('pstages');
-    if (ps) ps.innerHTML = svgStages();
-    updateStageTips();
     updateBadges();
     syncTitle();
     document.title = (state.company ? state.company + ' – ' : '') + tt('AVA – AI Value Assessment (prototype)');
@@ -3047,7 +3134,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     set('projsum', tt('Included: {a} of {b} rows. The portfolio takes {m} months, worked out from the rows.', { a: inc.length, b: list.length, m: f1(state.deliveryMonths) }));
     set('dm-ro', tt('{n} months, from the applications', { n: f1(state.deliveryMonths) })); set('dv-ro', f1(E.avgDevs(state)));
     ['cost', 'risk', 'rev'].forEach(function (k) { set('vr-' + k, C.money(sum[k])); });
-    var ro = res && res.os && res.os.projects || [], ra = res && res.alt && res.alt.projects || [], incIdx = [];
+    var full = rmRuns ? rmRuns.roadmap : res, ro = full && full.os && full.os.projects || [], ra = full && full.alt && full.alt.projects || [], incIdx = [];   // every application's own cost, whichever scenario is in view
     state.projectList.forEach(function (p, j) { if (p.include !== false) incIdx.push(j); });
     state.projectList.forEach(function (p, j) {
       var k = incIdx.indexOf(j), el = $('appcost-' + j); if (!el) return;
@@ -3089,7 +3176,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       if (rcSel === state.country) { state.rates = rateDefaults(state.country, state.currency); schedule(); }
       buildRates(); buildCosts(); return;
     }
-    if (act === 'sdlc-edit') { sdlcEdit = !sdlcEdit; renderSdlcCost(); return; }
+    if (act === 'sdlc-edit') { sdlcEdit = !sdlcEdit; inView(renderSdlcCost); return; }
     if (act === 'bd-expand' || act === 'bd-collapse' || act === 'item-add' || act === 'item-del') {
       var key = t.dataset.key, lk = t.dataset.list;
       if (act === 'bd-expand') E.expandBreakdown(state, key);
@@ -3143,6 +3230,14 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       state.seeds = E.seedDefaults(); state.skill = JSON.parse(JSON.stringify(DEFAULTS.skill)); E.applyOrgDefaults(state);
       buildInputs(); buildDefaults(); recalc(); toast(tt('Everything is back to the built-in defaults.'));
     }
+    else if (act === 'as-open') { openAssessment(t.dataset.id); return; }
+    else if (act === 'as-del') { deleteAssessment(t.dataset.id); return; }
+    else if (act === 'as-sel-old') { asSel = {}; readIndex().list.forEach(function (x) { if (x.id !== curId) asSel[x.id] = true; }); buildAssessments(); return; }
+    else if (act === 'as-del-sel') {
+      var pick = Object.keys(asSel).filter(function (k) { return asSel[k]; }); if (!pick.length) { toast(tt('Tick the assessments to delete first.'), 5000); return; }
+      if (!window.confirm(tt('Delete {n} assessments? This cannot be undone. Export them to Excel first if you want copies.', { n: pick.length }))) return;
+      removeAssessments(pick); return;
+    }
     else if (act === 'seeds-reset') { state.seeds = E.seedDefaults(); E.applyOrgDefaults(state); buildInputs(); buildDefaults(); toast(tt('The starting-figure ratios are back to the built-in values.')); }
     else if (act === 'remove') {
       if (state.projectList.length > 1) { state.projectList.splice(parseInt(t.dataset.i, 10), 1); appOpen = {}; }
@@ -3179,7 +3274,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
 
   /* ----------------------------------------------------------- tabs / modes */
-  var TABS = ['summary', 'pipeline', 'applications', 'team', 'infrastructure', 'delivery', 'costs', 'rates', 'assumptions', 'defaults', 'localisation', 'onepage'];
+  var TABS = ['summary', 'pipeline', 'applications', 'team', 'infrastructure', 'delivery', 'costs', 'rates', 'assumptions', 'defaults', 'localisation', 'assessments', 'onepage'];
   function showTab(name) {
     if (name === 'pipeline' && curTab !== 'pipeline') { running = false; updateRunBtn(); }   // arriving at the tab: wait for Start
     curTab = name;
@@ -3320,18 +3415,45 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var go = function () { if (o.level && LEVELS[o.level] !== undefined) setLevel(o.level); afterStateReplaced(); toast(tt('Opened {name}', { name: state.company || tt('Untitled') })); };
     if (o.lang && o.lang !== I18N.lang()) I18N.setLang(o.lang, go); else go();
   }
-  function deleteAssessment(id) {
-    var ix = readIndex(), ent = ix.list.filter(function (x) { return x.id === id; })[0]; if (!ent) return;
-    if (!window.confirm(tt('Delete the assessment {name}? This cannot be undone. Export it to Excel first if you want a copy.', { name: ent.name }))) return;
-    try { localStorage.removeItem(REC_KEY + id); } catch (e) { /* ignore */ }
-    ix.list = ix.list.filter(function (x) { return x.id !== id; }); if (ix.cur === id) ix.cur = ''; writeIndex(ix);
-    if (id === curId) {   // the one in view is gone: open the most recent other, or start afresh
+  /* Remove assessments (no question asked here). If the one in view is among them, the most recent of the rest is opened, or a fresh one started. */
+  function removeAssessments(ids) {
+    var ix = readIndex(), gone = {}; ids.forEach(function (id) { gone[id] = true; try { localStorage.removeItem(REC_KEY + id); } catch (e) { /* ignore */ } delete asSel[id]; });
+    ix.list = ix.list.filter(function (x) { return !gone[x.id]; }); if (gone[ix.cur]) ix.cur = ''; writeIndex(ix);
+    if (gone[curId]) {
       curId = ''; var next = ix.list.slice().sort(function (a, b2) { return b2.t - a.t; })[0];
       if (next) openAssessment(next.id, true); else { state = E.defaultState(); afterStateReplaced(); }
     } else buildAssessMenu();
   }
+  function deleteAssessment(id) {
+    var ent = readIndex().list.filter(function (x) { return x.id === id; })[0]; if (!ent) return;
+    if (!window.confirm(tt('Delete the assessment {name}? This cannot be undone. Export it to Excel first if you want a copy.', { name: ent.name }))) return;
+    removeAssessments([id]);
+  }
+  /* The Assessments tab (Admin view): every assessment kept in this browser, to open or to delete in bulk. */
+  var asSel = {};
+  function whenText(t) {
+    try { return new Date(t).toLocaleString(AVAI18n.lang() === 'en' ? 'en-AU' : AVAI18n.lang(), { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { return new Date(t).toISOString().slice(0, 16).replace('T', ' '); }
+  }
+  function buildAssessments() {
+    var host = $('cfg-assessments'); if (!host) return;
+    var ix = readIndex(), list = ix.list.slice().sort(function (a, b) { return b.t - a.t; }), total = 0;
+    var rows = list.map(function (x) {
+      var raw = ''; try { raw = localStorage.getItem(REC_KEY + x.id) || ''; } catch (e) { /* ignore */ }
+      var kb = Math.max(1, Math.round(raw.length / 1024)), on = x.id === curId; total += raw.length;
+      return '<tr><td><input type="checkbox" data-asck="' + esc(x.id) + '"' + (asSel[x.id] ? ' checked' : '') + ' aria-label="' + esc(x.name || tt('Untitled')) + '"></td><td>' + (on ? '<b>' : '') + esc(x.name || tt('Untitled')) + (on ? '</b> <span class="cdesc">' + esc(tt('Open now')) + '</span>' : '') + '</td><td>' + esc(whenText(x.t)) + '</td><td class="num">' + esc(tt('{n} kB', { n: kb })) + '</td><td class="asact">' +
+        (on ? '' : '<button type="button" class="b" data-act="as-open" data-id="' + esc(x.id) + '">' + esc(tt('Open')) + '</button> ') + '<button type="button" class="b" data-act="as-del" data-id="' + esc(x.id) + '">' + esc(tt('Delete')) + '</button></td></tr>';
+    }).join('');
+    var table = list.length
+      ? '<div class="refwrap"><table class="cmp"><tr><th></th><th>' + esc(tt('Assessment')) + '</th><th>' + esc(tt('Last saved')) + '</th><th>' + esc(tt('Size')) + '</th><th></th></tr>' + rows + '</table></div>' +
+        '<p><button type="button" class="b" data-act="as-sel-old">' + esc(tt('Select all but the one open')) + '</button> <button type="button" class="b danger" data-act="as-del-sel">' + esc(tt('Delete selected')) + '</button></p>' +
+        '<div class="note">' + esc(tt('About {n} kB of this browser\'s storage is used by assessments.', { n: Math.max(1, Math.round(total / 1024)) })) + '</div>'
+      : '<div class="note">' + esc(tt('No assessments are kept yet. Name the assessment in the title to keep it.')) + '</div>';
+    host.innerHTML = page('Assessments', 'Every named assessment is kept in this browser only. It does not follow you to another computer or browser, and it is lost if the browser\'s site data is cleared, so export to Excel what you want to keep. Work that has no name yet is kept as one draft, replaced when you start a new assessment.',
+      '<div class="card" style="grid-column:1/-1">' + table + '</div>');
+  }
   /* The assessments menu next to the title: every assessment kept here, the one in view marked, a start-afresh entry. */
   function buildAssessMenu() {
+    buildAssessments();
     var m = $('asmenu'); if (!m) return;
     var ix = readIndex(), list = ix.list.slice().sort(function (a, b) { return b.t - a.t; });
     m.innerHTML = '<button type="button" data-asnew="1">＋ ' + esc(tt('New assessment')) + '</button>' + (list.length ? '' : '<div class="note">' + esc(tt('Name an assessment (the title) and it is kept here. You can keep as many as you like and switch between them.')) + '</div>') +
@@ -3375,7 +3497,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function exportExcel() {
     if (!needName()) return;
-    var bytes = ST.buildXlsx(state, resultRows(), {}), blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    var bytes = ST.buildXlsx(state, inView(resultRows), {}), blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     var name = 'AVA - ' + ((state.company || 'assessment').replace(/[\\\/:*?"<>|]/g, '').trim() || 'assessment') + ' - ' + new Date().toISOString().slice(0, 10) + '.xlsx';
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
@@ -3461,6 +3583,13 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var meta = [tt('{case} scenario', { case: tt(caseName) }), tt('Analysis period {yrs}', { yrs: yrs }), tt('Hard savings only: {v}', { v: state.hardOnly ? tt('yes') : tt('no') })];
     items.push({ t: 'text', x: 0.56, y: 4.9, w: 12.21, h: 0.9, inset: 0, paras: [{ t: meta.join('   ·   '), size: 12, color: C0.muted }] });
     slides.push({ layout: 'content', title: tiles.length ? 'Summary' : 'Summary', items: items, footer1: f1t, footer2: f2t });
+    var bf = bothFacts();   // with a roadmap: the six figures for today and with the roadmap, side by side
+    if (bf) {
+      var cellOf = function (txt, o) { return Object.assign({ t: txt }, o); }, hdr = [cellOf('', { align: 'l' }), cellOf(tt('OutSystems today'), { align: 'r', bold: true }), cellOf(tt('OutSystems + roadmap'), { align: 'r', bold: true })];
+      slides.push({ layout: 'content', title: tt('Today and with the roadmap'), footer1: f1t, footer2: f2t, items: [
+        { t: 'table', x: 0.56, y: 1.55, colW: [5.2, 3.5, 3.5], rowH: 0.55, size: 13, rows: [hdr].concat(bf.today.tiles.map(function (tl, i) { return [cellOf(tt(tl.k), { align: 'l', color: C0.muted }), cellOf(tl.v, { align: 'r', bold: true }), cellOf(bf.roadmap.tiles[i].v, { align: 'r', bold: true })]; })) },
+        { t: 'text', x: 0.56, y: 5.9, w: 12.21, h: 0.8, inset: 0, paras: [{ t: tt('Today\'s applications against today\'s applications plus the roadmap, each compared with the alternative building the same applications. The roadmap needs an extra licence from when it starts.'), size: 11, color: C0.muted }] }] });
+    }
     // chart slides
     var jobs = [];
     charts.forEach(function (d, i) {
@@ -3524,8 +3653,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       { t: 'text', x: 0.56, y: 5.0, w: 12.21, h: 1.2, inset: 0, paras: [{ t: 'All figures use illustrative placeholder defaults unless a reference is shown. The same annual value applies to both approaches; the advantage comes from cost and from reaching production sooner.', size: 12, color: C0.muted }] }] });
     return { slides: slides, jobs: jobs, images: images };
   }
+  function deckSpecInView() { return inView(function () { var defs = chartDefs(), charts = visibleCharts(defs, true).filter(function (d) { return d.id !== 'summary'; }); return deckSpec(charts); }); }   // the charts and slides are drawn for the scenario in view
+  if (window.__AVA_TESTING) window.__avaTest = { deckSpec: deckSpecInView };
   function deckBytes() {
-    var defs = chartDefs(), charts = visibleCharts(defs, true).filter(function (d) { return d.id !== 'summary'; }), spec = deckSpec(charts);
+    var spec = deckSpecInView();
     return Promise.all(spec.jobs.map(function (j) { return svgToPng(j.svg, 3).then(function (r) { spec.images[j.name] = r.bytes; }); })).then(function () {
       return DK.build({ slides: spec.slides, images: spec.images }, typeof AVABrandTemplate !== 'undefined' ? AVABrandTemplate : false);   // the public build has no brand template and writes a plain deck
     });
@@ -3570,7 +3701,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     rates: ['Rates', 'The loaded hourly cost of each role and typical salaries for business roles, by country.'],
     assumptions: ['Analysis settings', 'Settings for the whole assessment: the discount rate, the scenarios, and how benefits ramp up.'],
     defaults: ['Defaults', 'General defaults that rarely change.'],
-    localisation: ['Languages', 'Translate the interface into another language.']
+    localisation: ['Languages', 'Translate the interface into another language.'],
+    assessments: ['Assessments', 'The assessments kept in this browser: open them, and delete the ones you no longer need.']
   };
   function applyTabTips() {
     document.querySelectorAll('#tabs button[data-tab]').forEach(function (b) { var t = TAB_TIPS[b.dataset.tab]; if (t) b.setAttribute('data-tip', tt(t[0]) + '::' + tt(t[1])); });
@@ -3646,6 +3778,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function relocalise() {
     applyStatic(); setTips(tipsOn); setPresent(presenting); applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
     scheduleSave();   // the language is part of what an assessment remembers
+    buildAssessments();
     buildLangSelect(); buildSumtools(); buildInputs(); buildDefaults(); if ($('pipeline') && sims) buildPipeline(); recalc(); buildLocalisation();
   }
 
@@ -3789,6 +3922,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       else if (t.closest && t.closest('[data-base]')) { setBase(t.closest('[data-base]').dataset.base); }
       else if (t.closest && t.closest('[data-host]')) { setHosting(t.closest('[data-host]').dataset.host); }
       else if (t.closest && t.closest('[data-case]')) { t = t.closest('[data-case]'); if (t.dataset.case === 'custom') { state.custom = state.custom || { advantage: 1, value: 1 }; state.realiseCustom = true; state.realise = { advantage: state.custom.advantage, value: state.custom.value }; } else { delete state.realiseCustom; state.realise = { advantage: E.casesOf(state)[t.dataset.case].advantage, value: E.casesOf(state)[t.dataset.case].value }; } recalc(); buildAssumptions(); }   // the Assumptions screen shows the percentages now in use
+      else if (t.dataset && t.dataset.rmview) { state.roadmap = state.roadmap || { on: true, licence: { os: 0, sentry: 0 } }; state.roadmap.view = t.dataset.rmview === 'roadmap' ? 'roadmap' : 'today'; recalc(); }   // which scenario the screens show
       else if (t.dataset && t.dataset.note) { var nbx = $('nb-' + t.dataset.note); if (nbx) { nbx.hidden = !nbx.hidden; if (!nbx.hidden) { var nta = nbx.querySelector('textarea'); if (nta) nta.focus(); } } }   // open or close a line's note
       else if (t.dataset && t.dataset.gqtoggle) {   // a delivery team's developer experience details
         var gqg = E.ensureGroups(state).filter(function (x) { return x.id === t.dataset.gqtoggle; })[0];
@@ -3800,9 +3934,9 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         var gid2 = t.dataset.gtoggle; gClosed[gid2] = !gClosed[gid2];
         var gel = document.querySelector('.dgroup[data-g="' + gid2 + '"]'); if (gel) { gel.classList.toggle('closed', !!gClosed[gid2]); t.textContent = gClosed[gid2] ? '▸' : '▾'; }
       }
-      else if (t.dataset && t.dataset.typ) { typicalMonths = Math.min(36, Math.max(1, typicalMonths + parseInt(t.dataset.typ, 10))); refreshSdlc(true); renderSdlcCost(); }
-      else if (t.dataset && t.dataset.sdlcmeasure) { sdlcMeasure = t.dataset.sdlcmeasure; refreshSdlc(true); renderSdlcCost(); }
-      else if (t.dataset && t.dataset.sdlcview) { sdlcScope = t.dataset.sdlcview; if (sdlcScope === 'port' && sdlcMeasure === 'time') sdlcMeasure = 'effort'; refreshSdlc(true); renderSdlcCost(); }
+      else if (t.dataset && t.dataset.typ) { typicalMonths = Math.min(36, Math.max(1, typicalMonths + parseInt(t.dataset.typ, 10))); inView(function () { refreshSdlc(true); renderSdlcCost(); }); }
+      else if (t.dataset && t.dataset.sdlcmeasure) { sdlcMeasure = t.dataset.sdlcmeasure; inView(function () { refreshSdlc(true); renderSdlcCost(); }); }
+      else if (t.dataset && t.dataset.sdlcview) { sdlcScope = t.dataset.sdlcview; if (sdlcScope === 'port' && sdlcMeasure === 'time') sdlcMeasure = 'effort'; inView(function () { refreshSdlc(true); renderSdlcCost(); }); }
       else if (t.dataset && t.dataset.teamgroup !== undefined) { teamGroup = t.dataset.teamgroup || null; recalc(); }
       else if (t.dataset && t.dataset.teamsub) { teamSub = t.dataset.teamsub; recalc(); }
       else if (t.dataset && t.dataset.cbbasis) { cbBasis = t.dataset.cbbasis; recalc(); }

@@ -235,7 +235,7 @@
     return ys.length ? { y: ys } : null;
   }
   /* i18n:begin */
-  var APP_COLS = ['ID', 'Include', 'Application or group of applications', 'Months to deliver', 'Developers', 'Delivery group', 'Type'];
+  var APP_COLS = ['ID', 'Include', 'Application or group of applications', 'Months to deliver', 'Developers', 'Delivery group', 'Type', 'When'];   // When: left empty for today, Roadmap for an application built later
   function typeLabel(key) { var out = ''; engine().USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === key) out = x[1]; }); }); return out; }
   function typeKey(text) { var t = String(text || '').trim().toLowerCase(), out = ''; if (!t) return ''; engine().USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === t || x[1].toLowerCase() === t) out = x[0]; }); }); return out; }
   var DRIVER_NAMES = { cost: 'Cost savings', rev: 'Revenue uplift', risk: 'Risk reduction' };
@@ -283,7 +283,7 @@
     rows.push(head(APP_COLS));
     var first = rows.length + 1, last = first + Math.max(list.length, 1);   // the sheet rows of the applications table, plus the blank row after it for adding one
     list.forEach(function (p, i) {
-      rows.push([inp(ids[i]), inp(listLabel(lists, 'yn', p.include !== false ? 'yes' : 'no')), inp(p.name), inp(p.months), inp(p.devs), inp(p.group), inp(p.useCase ? listLabel(lists, 'type', p.useCase) : '')]);
+      rows.push([inp(ids[i]), inp(listLabel(lists, 'yn', p.include !== false ? 'yes' : 'no')), inp(p.name), inp(p.months), inp(p.devs), inp(p.group), inp(p.useCase ? listLabel(lists, 'type', p.useCase) : ''), inp(p.phase === 'roadmap' ? listLabel(lists, 'phase', 'roadmap') : '')]);
     });
     var blockRanges = [], appFirstRow = first - 0;   // the sheet rows of each block's IDs and values, for the per-application totals
     var cashLabel = listLabel(lists, 'how', 'cash').replace(/"/g, '""'), HRS = E.LINE_HOURS || 1800, appTotals = list.map(function () { return 0; });
@@ -320,7 +320,7 @@
     rows[first - 2].push({ v: tt('Value per year (calculated)'), s: STY.head });
     list.forEach(function (p, i) {
       var parts = blockRanges.map(function (r) { return 'SUMIF($A$' + r.from + ':$A$' + r.to + ',$A' + (first + i) + ',$' + r.val + '$' + r.from + ':$' + r.val + '$' + r.to + ')'; });
-      rows[first - 1 + i][7] = parts.length ? { f: parts.join('+'), v: Math.round(appTotals[i] * 100) / 100, s: STY.calc } : calc(0);
+      rows[first - 1 + i][8] = parts.length ? { f: parts.join('+'), v: Math.round(appTotals[i] * 100) / 100, s: STY.calc } : calc(0);
     });
     return rows;
   }
@@ -347,6 +347,7 @@
         var id = txt(r[0]) || 'A' + (list.length + 1), app = { name: name, include: listKey(fileLists, 'yn', r[1], 'yes') !== 'no' && !/^(no|n|false|0)$/i.test(txt(r[1])), months: num(r[3], 1) };
         if (legacyApps) app.value = { cost: num(r[4], 0), rev: num(r[5], 0), risk: num(r[6], 0) };   // a workbook from before the calculators: typed values, which become simple calculators
         else { if (num(r[4], 0) > 0) app.devs = num(r[4], 0); if (txt(r[5])) app.group = txt(r[5]); if (txt(r[6])) app.useCase = listKey(fileLists, 'type', r[6], '') || typeKey(r[6]); }
+        if (txt(r[7]) && (listKey(fileLists, 'phase', r[7], '') === 'roadmap' || /^roadmap$/i.test(txt(r[7])))) app.phase = 'roadmap';   // only a roadmap application is tagged
         if (byId[id.toLowerCase()]) warnings.push('The ID ' + id + ' is used by more than one application, so only the last keeps its benefit lines.');
         list.push(app); byId[id.toLowerCase()] = app;
         if (byName[name.toLowerCase()]) dupNames[name.toLowerCase()] = true;
@@ -513,6 +514,7 @@
     var R = regions(), E = engine();
     return {
       yn: [['yes', tt('Yes')], ['no', tt('No')]],
+      phase: [['today', tt('Today')], ['roadmap', tt('Roadmap')]],
       driver: Object.keys(DRIVER_NAMES).map(function (k) { return [k, tt(DRIVER_NAMES[k])]; }),
       how: Object.keys(HOW_NAMES).map(function (k) { return [k, tt(HOW_NAMES[k])]; }),
       basis: Object.keys(BASIS_NAMES).map(function (k) { return [k, tt(BASIS_NAMES[k])]; }),

@@ -41,6 +41,8 @@
        * and the extra time delays go-live. effort = multiple of the active build time, pay = % of the team's usual pay level, enable = one-off training and coaching per developer.
        * learning = the applications it takes a team to reach full speed (0 = the effort multiple stays for every application). Placeholders to validate. */
       skill: { learning: 0, levels: { experienced: { pace: 0, discount: 0, enable: 0 }, mixed: { pace: 20, discount: 10, enable: 3000 }, newer: { pace: 50, discount: 25, enable: 8000 } } },
+      /* A roadmap to compare with: applications tagged Roadmap (phase) are built after today's, and the platform needs an extra licence (and Sentry) from when the first one starts. Off by default: one scenario. */
+      roadmap: { on: false, licence: { os: 0, sentry: 0 } },
       seeds: seedDefaults(),   // the ratios that turn the organisation's size into starting volumes
       org: { employees: 0, customers: 0, auto: true, industry: '', industryOther: '' },   // optional: the organisation's size, used only to set sensible starting figures when a calculator is added
       startDate: '',   // optional: the assessment's first day (YYYY-MM-DD); without it everything stays in relative time
@@ -320,7 +322,7 @@
         val[d.key] = bv ? bv[d.key] : 0;
       });
       out.push({ name: p.name && String(p.name).trim() ? String(p.name).trim() : 'Application ' + (idx + 1),
-        scale: mm ? mo : (isFinite(sc) && sc > 0 ? sc : 1), months: mm ? mo : null, devs: dv > 0 ? dv : num(state.team.devs), value: val, build: p.build, group: p.group });
+        scale: mm ? mo : (isFinite(sc) && sc > 0 ? sc : 1), months: mm ? mo : null, devs: dv > 0 ? dv : num(state.team.devs), value: val, build: p.build, group: p.group, phase: p.phase === 'roadmap' ? 'roadmap' : 'today' });
     });
     return out;
   }
@@ -745,13 +747,15 @@
       else if (st.mode === 'start') s = st.months * WPY / 12;   // some months after the start of the assessment (0: alongside the first team)
       else if (prev) s = place(prev).end + (st.mode === 'after' ? st.months * WPY / 12 : 0);   // straight after the previous team, or some months later
       var free = s, apps = [], sk = g.skill !== 'experienced' ? skillOf(state, g) : null, nth = 0;
-      list.forEach(function (p, i) {
+      var rm = !!(state.roadmap && state.roadmap.on), order = list.map(function (p, i) { return i; }).sort(function (x, y) { return (rm && list[x].phase === 'roadmap' ? 1 : 0) - (rm && list[y].phase === 'roadmap' ? 1 : 0) || x - y; });   // with a roadmap, today's applications are built first
+      order.forEach(function (i) {
+        var p = list[i];
         if (p.group !== g.id) return;
         var sc = p.scale * f, ref = T.active * sc, mult = 1, pay = 1;
         if (sk) { mult = 1 + (sk.effort - 1) * (sk.learning > 0 ? Math.max(0, 1 - nth / sk.learning) : 1); pay = sk.pay; }   // the slowdown can fade over a team's first applications
         var active = ref * mult, total = T.total + (sc - 1) * T.scalable + (active - ref), start = free;   // a slower team also pushes go-live back by the extra time
         free = start + active; nth++;
-        apps.push({ index: i, name: p.name, scale: sc, devs: p.devs, build: p.build, group: p.group, value: p.value, annualIncluded: annualOf(state, p.value), lane: 0,
+        apps.push({ index: i, name: p.name, phase: p.phase, scale: sc, devs: p.devs, build: p.build, group: p.group, value: p.value, annualIncluded: annualOf(state, p.value), lane: 0,
           start: start, active: active, activeRef: ref, pay: pay, skillMult: mult, designBuild: T.designBuild * sc * mult, activeEnd: start + active, goLive: start + total });
       });
       visiting[g.id] = false;
@@ -993,7 +997,7 @@
     approachResult(state, ap).projects.forEach(function (p) { fix += p.teamCost * num(state.maint.fix[ap]) / 100; enh += p.teamCost * num(state.maint.enh[ap]) / 100; });
     var tokPer = num(state.tokens.spend) * (ap === 'os' ? 1 - clamp(num(state.tokens.saving), 0, 100) / 100 : 1), tok = 0;
     approachResult(state, ap).projects.forEach(function (p) { tok += tokPer * p.scale * num(state.tokens.runPct) / 100; });
-    var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap), tooling: toolingAnnual(state, ap), infra: infraAnnual(state, ap), ops: opsWeekCost(state, ap) * WPY, assure: assureAnnual(state, ap) };
+    var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap) + roadmapLicence(state, ap), tooling: toolingAnnual(state, ap), infra: infraAnnual(state, ap), ops: opsWeekCost(state, ap) * WPY, assure: assureAnnual(state, ap) };
     o.app = o.fix + o.enh + o.tokens; o.nonApp = o.platform + o.tooling + o.infra + o.ops + o.assure; o.total = o.app + o.nonApp;
     return o;
   }
@@ -1011,6 +1015,9 @@
     /* Licences are charged once a year, in advance, from the start: a full year's licence in week 0 and on each anniversary (so the cumulative lines step down every year). */
     var licW = licenceStartWeek(state);
     for (k = 0; k < W; k++) { var licDue = k >= licW && (k - licW) % WPY === 0; cost.platform[k] = licDue ? licenceAnnual(ys(yr(k)), ap) : 0; cost.tooling[k] = licDue ? toolingAnnual(ys(yr(k)), ap) : 0; }   // both are paid yearly, in advance
+    var rmExtra = roadmapLicence(state, ap), rmStart = null;   // the roadmap's extra licence: yearly in advance from when its first application starts
+    if (rmExtra > 0) sched.forEach(function (p) { if (p.phase === 'roadmap' && (rmStart === null || p.start < rmStart)) rmStart = p.start; });
+    if (rmStart !== null) for (k = Math.max(0, Math.round(rmStart)); k < W; k += WPY) cost.platform[k] += rmExtra * (varies(state) ? Math.pow(1 + num((state.escal || {}).licence) / 100, yr(k)) : 1);
     addUniform(cost.setup, 0, setupWeeks(state, ap), setupAmount(state, ap));   // one-off, spread over the setup period
 
     var ramp = Math.max(0, num(state.rampWeeks)), growth = num(state.growth) / 100;
@@ -1154,6 +1161,50 @@
     });
     s.realise = { advantage: 1, value: 1 };
     return s;
+  }
+  /* ---- Today and the roadmap: one portfolio, each application tagged. Two runs of the engine on two derived assessments: "today" leaves the roadmap applications out; "roadmap" has every
+   * application and the roadmap's extra licence. Both approaches build the same applications in each. ---- */
+  function roadmapOn(state) {   // a comparison needs the switch on and applications on both sides
+    if (!state.roadmap || !state.roadmap.on) return false;
+    var a = 0, b = 0; ensureList(state).forEach(function (p) { if (p.include === false) return; if (p.phase === 'roadmap') b++; else a++; });
+    return a > 0 && b > 0;
+  }
+  function roadmapLicence(state, ap) { return ap === 'os' && state.roadmapRun ? num(state.roadmapRun.os) + num(state.roadmapRun.sentry) : 0; }
+  function scenarioState(state, which) {
+    if (!roadmapOn(state)) return state;
+    var s = JSON.parse(JSON.stringify(state)); ensureList(s);
+    if (which === 'today') s.projectList.forEach(function (p) { if (p.phase === 'roadmap') p.include = false; });
+    else s.roadmapRun = { os: num((s.roadmap.licence || {}).os), sentry: num((s.roadmap.licence || {}).sentry) };
+    return s;
+  }
+  /* What the roadmap adds to OutSystems over the analysis period, today's run against the roadmap's. */
+  function roadmapAdds(t, f) {
+    var d = { pvValue: f.os.pvValueTotal - t.os.pvValueTotal, pvCost: f.os.pvCostTotal - t.os.pvCostTotal, pvLicence: f.os.pvCost.platform - t.os.pvCost.platform,
+      value: f.os.totalValue - t.os.totalValue, cost: f.os.totalCost - t.os.totalCost, licence: f.os.sumCost.platform - t.os.sumCost.platform, npv: f.os.npv - t.os.npv };
+    d.pvOther = d.pvCost - d.pvLicence; d.other = d.cost - d.licence;
+    return d;
+  }
+  function runScenarios(state) {
+    if (!roadmapOn(state)) return null;
+    var t = run(scenarioState(state, 'today')), f = run(scenarioState(state, 'roadmap'));
+    return { today: t, roadmap: f, adds: roadmapAdds(t, f) };
+  }
+  /* The advantage as applications are added one at a time in build order (today's first), with the roadmap licence from the first roadmap application. */
+  function buildUp(state) {
+    if (!roadmapOn(state)) return null;
+    var list = ensureList(state), idx = [];
+    list.forEach(function (p, i) { if (p.include !== false) idx.push(i); });
+    idx.sort(function (x, y) { return (list[x].phase === 'roadmap' ? 1 : 0) - (list[y].phase === 'roadmap' ? 1 : 0) || x - y; });
+    var out = [];
+    idx.forEach(function (_, n) {
+      var s = JSON.parse(JSON.stringify(state)), keep = {}, road = false; ensureList(s);
+      idx.slice(0, n + 1).forEach(function (i) { keep[i] = true; if (list[i].phase === 'roadmap') road = true; });
+      s.projectList.forEach(function (p, i) { if (p.include !== false && !keep[i]) p.include = false; });
+      if (road) s.roadmapRun = { os: num((s.roadmap.licence || {}).os), sentry: num((s.roadmap.licence || {}).sentry) };
+      var r = run(s), p0 = list[idx[n]];
+      out.push({ n: n + 1, name: p0.name && String(p0.name).trim() ? String(p0.name).trim() : 'Application ' + (idx[n] + 1), phase: p0.phase === 'roadmap' ? 'roadmap' : 'today', advantage: r.advantage, osNpv: r.os.npv, altNpv: r.alt.npv });
+    });
+    return out;
   }
   function run(state) {
     var eff = effectiveState(state), r = runCore(eff);
@@ -1511,7 +1562,7 @@
     defaultState: defaultState, passProb: passProb, ROLES: ROLES, ALL_ROLES: ALL_ROLES, mixCost: mixCost, peoplePerDev: peoplePerDev, devsFor: devsFor, weekCost: weekCost,
     sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, toolingAnnual: toolingAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
     expandBreakdown: expandBreakdown, collapseBreakdown: collapseBreakdown, expectedTime: expectedTime,
-    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, skillOf: skillOf, levelOf: levelOf, teamExperience: teamExperience, setTeamExperience: setTeamExperience, qualityImpact: qualityImpact,
+    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, roadmapOn: roadmapOn, scenarioState: scenarioState, runScenarios: runScenarios, buildUp: buildUp, roadmapAdds: roadmapAdds, skillOf: skillOf, levelOf: levelOf, teamExperience: teamExperience, setTeamExperience: setTeamExperience, qualityImpact: qualityImpact,
     projectList: projectList, ensureList: ensureList, bauYear: bauYear, maintPct: maintPct, mapShare: mapShare, applyMapShares: applyMapShares, ensureGroups: ensureGroups, groupFactors: groupFactors, migrateDefaults: migrateDefaults, factorAt: factorAt, hasPattern: hasPattern, yearState: yearState, buildValueYear: buildValueYear, overlapping: overlapping, LINE_HOURS: LINE_HOURS, seedLine: seedLine, seedDefaults: seedDefaults, applyOrgDefaults: applyOrgDefaults, INDUSTRIES: INDUSTRIES, matchTypes: matchTypes, USE_ALIASES: USE_ALIASES, ORG_TYPICAL: ORG_TYPICAL, roundSig: roundSig, USE_CASES: USE_CASES, avgDevs: avgDevs, isSimple: isSimple, simpleIndex: simpleIndex, annualOf: annualOf, monthsMode: monthsMode, deriveMonths: deriveMonths, migrateMonths: migrateMonths, LINE_MONEY: LINE_MONEY, newLine: newLine, lineValue: lineValue, hasBuild: hasBuild, buildValue: buildValue, expandProjects: expandProjects,
     schedule: schedule, approachResult: approachResult, run: run
   };
