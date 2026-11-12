@@ -41,8 +41,8 @@
        * and the extra time delays go-live. effort = multiple of the active build time, pay = % of the team's usual pay level, enable = one-off training and coaching per developer.
        * learning = the applications it takes a team to reach full speed (0 = the effort multiple stays for every application). Placeholders to validate. */
       skill: { learning: 0, levels: { experienced: { pace: 0, discount: 0, enable: 0 }, mixed: { pace: 20, discount: 10, enable: 3000 }, newer: { pace: 50, discount: 25, enable: 8000 } } },
-      /* A roadmap to compare with: applications tagged Roadmap (phase) are built after today's, and the platform needs an extra licence (and Sentry) from when the first one starts. Off by default: one scenario. */
-      roadmap: { on: false, licence: { os: 0, sentry: 0 } },
+      /* A roadmap to compare with: applications tagged Roadmap (phase) are built after the initial ones, and the platform needs an extra licence (and Sentry) from when the first one starts. */
+      roadmap: { licence: { os: 0, sentry: 0 } },
       seeds: seedDefaults(),   // the ratios that turn the organisation's size into starting volumes
       org: { employees: 0, customers: 0, auto: true, industry: '', industryOther: '' },   // optional: the organisation's size, used only to set sensible starting figures when a calculator is added
       startDate: '',   // optional: the assessment's first day (YYYY-MM-DD); without it everything stays in relative time
@@ -81,7 +81,7 @@
       rateCards: {},      // changes to the built-in hourly rate card, by country id, in the country's own currency: {countryId: {role: rate}}
       /* Where each key input came from: customer, estimate, benchmark or assumption (the default) */
       evidence: {},
-      rampWeeks: 20,       // weeks for value to ramp to full after go-live
+      rampWeeks: 13,       // weeks for value to ramp to full after go-live
       growth: 0,           // % per year growth of value after go-live
       /* Yearly change of costs, % per year from the second year: labour (every role's rate), licences (platform, tooling, security services) and infrastructure.
        * Any single amount can override its family with its own pattern, kept in state.over[path with / for .] (or in a line item's own over): {g: % per year} or {y: [year 1, year 2, ...]}. */
@@ -154,12 +154,12 @@
         { name: 'AI agents: observability, tools, orchestration, memory, model routing, enterprise data', annual: 0, os: 1 }
       ],
       opsItems: [           // alternative operating resources, ongoing FTE: [{name, role, fte}]
-        { name: 'Cloud architects (2 people at 20%)', role: 'arch', fte: 0.4, os: 0.15 },
-        { name: 'DevOps / site reliability engineers (4 at 20%)', role: 'sre', fte: 0.8, os: 0.35 },
-        { name: 'Platform testers (2 at 20%)', role: 'qa', fte: 0.4, os: 0.1 },
-        { name: 'Security experts (2 at 20%)', role: 'sec', fte: 0.4, os: 0.2 },
-        { name: 'Programme manager (1 at 20%)', role: 'pm', fte: 0.2, os: 0.1 },
-        { name: 'Agile coach (1 at 20%)', role: 'coach', fte: 0.2, os: 0 }
+        { name: 'Cloud architects (2 people at 10%)', role: 'arch', fte: 0.2, os: 0.15 },
+        { name: 'DevOps / site reliability engineers (4 at 10%)', role: 'sre', fte: 0.4, os: 0.35 },
+        { name: 'Platform testers (2 at 10%)', role: 'qa', fte: 0.2, os: 0.1 },
+        { name: 'Security experts (2 at 10%)', role: 'sec', fte: 0.2, os: 0.2 },
+        { name: 'Programme manager (1 at 10%)', role: 'pm', fte: 0.1, os: 0.1 },
+        { name: 'Agile coach (1 at 10%)', role: 'coach', fte: 0.1, os: 0 }
       ],
       /* One-off setup costs. 'absorbed' (the default) leaves them out so the comparison focuses on ongoing costs; 'included' counts them.
        * Alternative figures follow the same research: hiring and onboarding about 660K, then building the environment about 1.2M (80% team, 20% tools). */
@@ -691,6 +691,25 @@
     return legacyFactor(state);
   }
 
+  /* The state a new assessment starts from: two sets of applications, the initial one and the roadmap, each its own delivery team with a given development cost, on PaaS without Sentry.
+   * Illustrative placeholders: the initial application's value is modest against its licence and cost; the roadmap's is much larger. The default state (defaultState) stays the plain one. */
+  function startState() {
+    var s = defaultState(), app = function (name, g, months, v, phase) {
+      var a = { name: name, include: true, months: months, devs: 3, group: g, build: [] };
+      ['cost', 'rev', 'risk'].forEach(function (k) { var l = newLine('simple', { driver: k }); l.amount = v[k]; a.build.push(l); });
+      if (phase) a.phase = phase; return a;
+    };
+    s.platform = { alt: 150000, os: 100000, sentry: 15000 }; s.osHosting = 'paas'; s.assurance = { required: false, attest: true };
+    s.tokens.spend = 25000;   // the AI build tokens for a small application: the default (100,000) suits a larger one
+    [0.1, 0.2, 0.1, 0.1, 0.05, 0.05].forEach(function (f, i) { s.opsItems[i].fte = f; });   // the alternative's platform team as part-time shares of its specialists: the lines at 5%
+    ['Cloud architects (2 people at 5%)', 'DevOps / site reliability engineers (4 at 5%)', 'Platform testers (2 at 5%)', 'Security experts (2 at 5%)', 'Programme manager (1 at 5%)', 'Agile coach (1 at 5%)'].forEach(function (n, i) { s.opsItems[i].name = n; });
+    s.roadmap = { licence: { os: 150000, sentry: 0 } };
+    s.deliveryGroups = [{ id: 'g1', name: 'Initial application(s)', rate: 100, mode: 'quote', quote: 200000 }, { id: 'g2', name: 'Roadmap', rate: 100, mode: 'quote', quote: 500000, start: { mode: 'after', date: '', team: '', months: 0 } }];
+    s.projectList = [app('Initial application(s)', 'g1', 2, { cost: 260000, rev: 260000, risk: 130000 }), app('Roadmap', 'g2', 6, { cost: 1120000, rev: 1120000, risk: 560000 }, 'roadmap')];
+    s.deliveryMonths = 8; s.projects = 2;
+    ensureList(s); ensureGroups(s); return s;
+  }
+
   /* Projects are assigned to the delivery team (lane) that is free first. A team is busy only for active
    * work (design, build, fixes), not while waiting in a review queue. */
   /* Developer quality of a delivery team: how long its work takes (an effort multiple for each approach: the team's own pace, and for OutSystems also learning the platform), what it is
@@ -747,7 +766,7 @@
       else if (st.mode === 'start') s = st.months * WPY / 12;   // some months after the start of the assessment (0: alongside the first team)
       else if (prev) s = place(prev).end + (st.mode === 'after' ? st.months * WPY / 12 : 0);   // straight after the previous team, or some months later
       var free = s, apps = [], sk = g.skill !== 'experienced' ? skillOf(state, g) : null, nth = 0;
-      var rm = !!(state.roadmap && state.roadmap.on), order = list.map(function (p, i) { return i; }).sort(function (x, y) { return (rm && list[x].phase === 'roadmap' ? 1 : 0) - (rm && list[y].phase === 'roadmap' ? 1 : 0) || x - y; });   // with a roadmap, today's applications are built first
+      var rm = true, order = list.map(function (p, i) { return i; }).sort(function (x, y) { return (rm && list[x].phase === 'roadmap' ? 1 : 0) - (rm && list[y].phase === 'roadmap' ? 1 : 0) || x - y; });   // with a roadmap, today's applications are built first
       order.forEach(function (i) {
         var p = list[i];
         if (p.group !== g.id) return;
@@ -997,7 +1016,7 @@
     approachResult(state, ap).projects.forEach(function (p) { fix += p.teamCost * num(state.maint.fix[ap]) / 100; enh += p.teamCost * num(state.maint.enh[ap]) / 100; });
     var tokPer = num(state.tokens.spend) * (ap === 'os' ? 1 - clamp(num(state.tokens.saving), 0, 100) / 100 : 1), tok = 0;
     approachResult(state, ap).projects.forEach(function (p) { tok += tokPer * p.scale * num(state.tokens.runPct) / 100; });
-    var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap) + roadmapLicence(state, ap), tooling: toolingAnnual(state, ap), infra: infraAnnual(state, ap), ops: opsWeekCost(state, ap) * WPY, assure: assureAnnual(state, ap) };
+    var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap) + roadmapLicence(state, ap), tooling: toolingAnnual(state, ap) * runShare(state), infra: infraAnnual(state, ap) * runShare(state), ops: opsWeekCost(state, ap) * WPY * runShare(state), assure: assureAnnual(state, ap) * runShare(state) };
     o.app = o.fix + o.enh + o.tokens; o.nonApp = o.platform + o.tooling + o.infra + o.ops + o.assure; o.total = o.app + o.nonApp;
     return o;
   }
@@ -1014,7 +1033,7 @@
     var yr = function (week) { return Math.floor(week / WPY); };
     /* Licences are charged once a year, in advance, from the start: a full year's licence in week 0 and on each anniversary (so the cumulative lines step down every year). */
     var licW = licenceStartWeek(state);
-    for (k = 0; k < W; k++) { var licDue = k >= licW && (k - licW) % WPY === 0; cost.platform[k] = licDue ? licenceAnnual(ys(yr(k)), ap) : 0; cost.tooling[k] = licDue ? toolingAnnual(ys(yr(k)), ap) : 0; }   // both are paid yearly, in advance
+    for (k = 0; k < W; k++) { var licDue = k >= licW && (k - licW) % WPY === 0; cost.platform[k] = licDue ? licenceAnnual(ys(yr(k)), ap) : 0; cost.tooling[k] = licDue ? toolingAnnual(ys(yr(k)), ap) * runShare(state) : 0; }   // both are paid yearly, in advance
     var rmExtra = roadmapLicence(state, ap), rmStart = null;   // the roadmap's extra licence: yearly in advance from when its first application starts
     if (rmExtra > 0) sched.forEach(function (p) { if (p.phase === 'roadmap' && (rmStart === null || p.start < rmStart)) rmStart = p.start; });
     if (rmStart !== null) for (k = Math.max(0, Math.round(rmStart)); k < W; k += WPY) cost.platform[k] += rmExtra * (varies(state) ? Math.pow(1 + num((state.escal || {}).licence) / 100, yr(k)) : 1);
@@ -1028,7 +1047,8 @@
     var gf = groupFactors(state);
     var nApps = Math.max(1, sched.length), figs = {};
     /* Infrastructure, operations and security at full run, per week, in the year of the week (they change from year to year when a pattern or yearly change is set). */
-    var fig = function (y) { return figs[y] || (figs[y] = { i: infraAnnual(ys(y), ap) / WPY, o: opsWeekCost(ys(y), ap), a: assureAnnual(ys(y), ap) / WPY }); };
+    var share = runShare(state);   // a smaller portfolio (the initial applications of a roadmap comparison) needs a proportionate share of the whole portfolio's tooling, infrastructure, operating people and security
+    var fig = function (y) { return figs[y] || (figs[y] = { i: infraAnnual(ys(y), ap) / WPY * share, o: opsWeekCost(ys(y), ap) * share, a: assureAnnual(ys(y), ap) / WPY * share }); };
     sched.forEach(function (p) {
       var gfac = (gf[p.group] === undefined ? 1 : gf[p.group]) * (p.pay === undefined ? 1 : p.pay), buildCost = p.active * weekCost(state, ap, p.devs) * gfac;
       var refBuild = (p.activeRef === undefined ? p.active : p.activeRef) * weekCost(state, ap, p.devs) * (gf[p.group] === undefined ? 1 : gf[p.group]);   // what the application costs to look after does not depend on who built it
@@ -1164,16 +1184,22 @@
   }
   /* ---- Today and the roadmap: one portfolio, each application tagged. Two runs of the engine on two derived assessments: "today" leaves the roadmap applications out; "roadmap" has every
    * application and the roadmap's extra licence. Both approaches build the same applications in each. ---- */
-  function roadmapOn(state) {   // a comparison needs the switch on and applications on both sides
-    if (!state.roadmap || !state.roadmap.on) return false;
+  function roadmapOn(state) {   // a comparison needs included applications on both sides: initial and roadmap
     var a = 0, b = 0; ensureList(state).forEach(function (p) { if (p.include === false) return; if (p.phase === 'roadmap') b++; else a++; });
     return a > 0 && b > 0;
+  }
+  function runShare(state) { return state.runShare === undefined ? 1 : Math.min(1, Math.max(0, num(state.runShare))); }
+  /* The share of the whole portfolio's size that a subset of the applications is: their sizes added up over the sizes of every included application. */
+  function sizeShare(state, keepIdx) {
+    var all = 0, part = 0, list = ensureList(state), sizes = projectList(state), k = 0;
+    list.forEach(function (p, i) { if (p.include === false) return; var sz = sizes[k++].scale; all += sz; if (keepIdx(p, i)) part += sz; });
+    return all > 0 ? part / all : 1;
   }
   function roadmapLicence(state, ap) { return ap === 'os' && state.roadmapRun ? num(state.roadmapRun.os) + num(state.roadmapRun.sentry) : 0; }
   function scenarioState(state, which) {
     if (!roadmapOn(state)) return state;
     var s = JSON.parse(JSON.stringify(state)); ensureList(s);
-    if (which === 'today') s.projectList.forEach(function (p) { if (p.phase === 'roadmap') p.include = false; });
+    if (which === 'today') { s.runShare = sizeShare(s, function (p) { return p.phase !== 'roadmap'; }); s.projectList.forEach(function (p) { if (p.phase === 'roadmap') p.include = false; }); }
     else s.roadmapRun = { os: num((s.roadmap.licence || {}).os), sentry: num((s.roadmap.licence || {}).sentry) };
     return s;
   }
@@ -1199,6 +1225,7 @@
     idx.forEach(function (_, n) {
       var s = JSON.parse(JSON.stringify(state)), keep = {}, road = false; ensureList(s);
       idx.slice(0, n + 1).forEach(function (i) { keep[i] = true; if (list[i].phase === 'roadmap') road = true; });
+      s.runShare = sizeShare(s, function (p, i) { return keep[i]; });
       s.projectList.forEach(function (p, i) { if (p.include !== false && !keep[i]) p.include = false; });
       if (road) s.roadmapRun = { os: num((s.roadmap.licence || {}).os), sentry: num((s.roadmap.licence || {}).sentry) };
       var r = run(s), p0 = list[idx[n]];
@@ -1372,7 +1399,8 @@
   function hostingCompare(state) {
     var out = {}, mk = function (s, ap, setupRaw) {
       var lic = licenceAnnual(s, ap), up = ap === 'os' ? sentryUplift(s) : 0;
-      return { licences: lic, tooling: toolingAnnual(s, ap), sentry: up, infra: infraAnnual(s, ap), ops: opsWeekCost(s, ap) * WPY, opsFte: opsFteTotal(s, ap), assure: assureAnnual(s, ap), setup: setupRaw };
+      var sh = runShare(s);
+      return { licences: lic, tooling: toolingAnnual(s, ap) * sh, sentry: up, infra: infraAnnual(s, ap) * sh, ops: opsWeekCost(s, ap) * WPY * sh, opsFte: opsFteTotal(s, ap) * sh, assure: assureAnnual(s, ap) * sh, setup: setupRaw };
     };
     var s0 = JSON.parse(JSON.stringify(state)); out.alt = mk(s0, 'alt', num(state.setup.alt.hiring) + num(state.setup.alt.build) + num(state.setup.alt.tools));
     /* Each route is shown with the security the organisation needs: the plain routes with none required, PaaS + Sentry and self-managed + assured with high assurance required. */
@@ -1562,7 +1590,7 @@
     defaultState: defaultState, passProb: passProb, ROLES: ROLES, ALL_ROLES: ALL_ROLES, mixCost: mixCost, peoplePerDev: peoplePerDev, devsFor: devsFor, weekCost: weekCost,
     sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, toolingAnnual: toolingAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
     expandBreakdown: expandBreakdown, collapseBreakdown: collapseBreakdown, expectedTime: expectedTime,
-    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, roadmapOn: roadmapOn, scenarioState: scenarioState, runScenarios: runScenarios, buildUp: buildUp, roadmapAdds: roadmapAdds, skillOf: skillOf, levelOf: levelOf, teamExperience: teamExperience, setTeamExperience: setTeamExperience, qualityImpact: qualityImpact,
+    parseDate: parseDate, dateAtWeek: dateAtWeek, weeksFromStart: weeksFromStart, licenceStartWeek: licenceStartWeek, schedule: schedule, startState: startState, roadmapOn: roadmapOn, scenarioState: scenarioState, runScenarios: runScenarios, buildUp: buildUp, roadmapAdds: roadmapAdds, skillOf: skillOf, levelOf: levelOf, teamExperience: teamExperience, setTeamExperience: setTeamExperience, qualityImpact: qualityImpact,
     projectList: projectList, ensureList: ensureList, bauYear: bauYear, maintPct: maintPct, mapShare: mapShare, applyMapShares: applyMapShares, ensureGroups: ensureGroups, groupFactors: groupFactors, migrateDefaults: migrateDefaults, factorAt: factorAt, hasPattern: hasPattern, yearState: yearState, buildValueYear: buildValueYear, overlapping: overlapping, LINE_HOURS: LINE_HOURS, seedLine: seedLine, seedDefaults: seedDefaults, applyOrgDefaults: applyOrgDefaults, INDUSTRIES: INDUSTRIES, matchTypes: matchTypes, USE_ALIASES: USE_ALIASES, ORG_TYPICAL: ORG_TYPICAL, roundSig: roundSig, USE_CASES: USE_CASES, avgDevs: avgDevs, isSimple: isSimple, simpleIndex: simpleIndex, annualOf: annualOf, monthsMode: monthsMode, deriveMonths: deriveMonths, migrateMonths: migrateMonths, LINE_MONEY: LINE_MONEY, newLine: newLine, lineValue: lineValue, hasBuild: hasBuild, buildValue: buildValue, expandProjects: expandProjects,
     schedule: schedule, approachResult: approachResult, run: run
   };

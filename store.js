@@ -514,7 +514,7 @@
     var R = regions(), E = engine();
     return {
       yn: [['yes', tt('Yes')], ['no', tt('No')]],
-      phase: [['today', tt('Today')], ['roadmap', tt('Roadmap')]],
+      phase: [['today', tt('Initial')], ['roadmap', tt('Roadmap')]],
       driver: Object.keys(DRIVER_NAMES).map(function (k) { return [k, tt(DRIVER_NAMES[k])]; }),
       how: Object.keys(HOW_NAMES).map(function (k) { return [k, tt(HOW_NAMES[k])]; }),
       basis: Object.keys(BASIS_NAMES).map(function (k) { return [k, tt(BASIS_NAMES[k])]; }),

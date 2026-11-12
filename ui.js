@@ -3,7 +3,7 @@
   'use strict';
   var I18N = AVAI18n, tt = I18N.t;   // tt('English text') gives the text in the chosen language, or the English when there is no translation
   var E = AVAEngine, S = AVASim, C = AVACharts, R = AVARegions, D = AVASdlc, ST = AVAStore, DK = AVADeck, SK = AVAStack;
-  var state = E.defaultState();
+  var state = E.startState();
   var res = null;
   var mode = 'full';              // there is one view now (the old Simple and Full views were merged); kept so the code that checks it still works
   var curTab = 'pipeline', prevTab = 'pipeline';
@@ -301,6 +301,87 @@
   document.addEventListener('toggle', function (ev) { var t = ev.target; if (t.dataset && t.dataset.fold) foldOpen[t.dataset.fold] = t.open; }, true);
   function card(title, body) { return '<div class="card"><h4>' + tt(title) + '</h4>' + body + '</div>'; }
 
+  /* The initial applications and the roadmap, as two blocks of basic inputs. A block edits the first application of its set and that application's delivery team, and becomes a roll-up of the
+   * Applications tab once the set has more than one application (or its team is shared with the other set). */
+  function blockOf(phase) {
+    var road = phase === 'roadmap', list = E.ensureList(state), groups = E.ensureGroups(state), idx = [];
+    list.forEach(function (p, i) { if ((p.phase === 'roadmap') === road) idx.push(i); });
+    var inc = idx.filter(function (i) { return list[i].include !== false; }), first = inc.length ? inc[0] : idx[0];
+    var g = first === undefined ? null : groups.filter(function (x) { return x.id === list[first].group; })[0] || null;
+    var shared = !!g && list.some(function (p) { return p.group === g.id && (p.phase === 'roadmap') !== road; });
+    return { idx: idx, inc: inc, first: first, g: g, gi: g ? groups.indexOf(g) : -1, shared: shared, one: idx.length === 1 && !!g && !shared, on: inc.length > 0 };
+  }
+  function simpleLine(app, key) { var r = -1; (app.build || []).forEach(function (l, j) { if (r < 0 && l.type === 'simple' && l.driver === key) r = j; }); return r; }
+  function blockHtml(phase) {
+    var b = blockOf(phase), road = phase === 'roadmap', list = E.ensureList(state), cur = curSym();
+    var ro = function (id, what) { return '<div class="ro locked" id="' + id + '" data-go="applications"' + C.tip(tt('Added up from the applications'), tt(what) + ' ' + tt('Click to edit the applications.')) + '></div>'; };
+    var head = '';
+    if (road) {
+      head = '<label class="chk"' + C.tip(tt('Include the roadmap'), tt('The later applications, built after the initial ones by their own delivery team and needing an extra licence. With them, OutSystems with the initial applications is compared with OutSystems plus the roadmap.')) + '><input type="checkbox" data-rmblock="1"' + (b.on ? ' checked' : '') + '> ' + tt('Include the roadmap') + '</label>';
+      if (!b.on) return head + '<div class="note">' + tt('Switch this on to compare the initial applications with the initial applications plus a roadmap.') + '</div>';
+    }
+    var h = head;
+    h += row((road ? 'Extra licence per year' : 'Licence per year') + ' <i>' + esc(cur) + '</i>', inp(road ? 'roadmap.licence.os' : 'platform.os', 5000, 0),
+      road ? 'The extra yearly OutSystems platform licence the roadmap needs, on top of the licence for the initial applications. It is charged from when the first roadmap application starts.' : 'The yearly OutSystems platform licence. It is the same whether OutSystems hosts it (PaaS) or the organisation does (self-managed).', road ? 'roadmap.licence.os' : 'platform.os');
+    if (road) {
+      var rs = num0(state.roadmap && state.roadmap.licence && state.roadmap.licence.sentry) > 0;
+      h += '<label class="chk"' + C.tip(tt('High assurance (Sentry)'), tt('Tick if the roadmap needs the Sentry security and compliance add-on, for an extra yearly licence.')) + '><input type="checkbox" data-rmsentry="1"' + (rs ? ' checked' : '') + '> ' + tt('High assurance (Sentry)') + '</label>';
+      if (rs) h += row('Extra Sentry licence per year <i>' + esc(cur) + '</i>', inp('roadmap.licence.sentry', 1000, 0), 'The extra yearly Sentry licence the roadmap needs.', 'roadmap.licence.sentry');
+    } else {
+      h += assureCheck();
+      if (E.assuranceOn(state) && E.hostingOf(state) !== 'self') h += row('Sentry licence per year <i>' + esc(cur) + '</i>', inp('platform.sentry', 1000, 0), 'The extra yearly licence for the Sentry security and compliance add-on, on top of the platform licence. Sentry is available on PaaS only.', 'platform.sentry');
+    }
+    var dev = b.one && b.g.mode === 'quote';
+    h += dev ? row('Development cost <i>' + esc(cur) + '</i>', inp('deliveryGroups.' + b.gi + '.quote', 10000, 0), 'What OutSystems delivery of these applications will cost: people and time. The rate level of the delivery team follows from it, and the alternative\'s cost follows from its longer time to production.', 'deliveryGroups.' + b.gi + '.quote')
+      : row('Development cost', ro('blk-cost-' + phase, 'What OutSystems delivery of these applications costs: the delivery team\'s rate level, developers and months, set on the Applications tab.'));
+    h += b.one ? row('Development time (months)', inp('projectList.' + b.first + '.months', 0.5, 0.1, 60), 'How long OutSystems takes to deliver these applications: the delivery team\'s active work on design, build and fixes. The alternative\'s time is projected from this.', 'projectList.' + b.first + '.months')
+      : row('Development time (months)', ro('blk-months-' + phase, 'The months of each application added up, delivered one after another.'));
+    var app = b.one ? list[b.first] : null, calc = app && (app.build || []).some(function (l) { return l.type !== 'simple'; }), tips = {
+      cost: 'Hard saving each year once these applications are live: effort or licences no longer needed. Same for both approaches; OutSystems gets it sooner.',
+      rev: 'Soft benefit each year once these applications are live: extra revenue or process efficiency.',
+      risk: 'Soft benefit each year once these applications are live: expected loss avoided (probability x impact x reduction).' };
+    [['cost', 'Cost savings'], ['rev', 'Revenue uplift'], ['risk', 'Risk reduction']].forEach(function (d) {
+      var j = app && !calc ? simpleLine(app, d[0]) : -1;
+      if (app && !calc && j >= 0) h += row(d[1] + ' <i>' + esc(cur) + '</i>', inp('projectList.' + b.first + '.build.' + j + '.amount', 10000, 0), tips[d[0]], 'projectList.' + b.first + '.build.' + j + '.amount');
+      else if (app && !calc) h += row(d[1], '<button type="button" class="b" data-act="sv-add" data-i="' + b.first + '" data-k="' + d[0] + '">' + tt('Add') + '</button>', tips[d[0]]);
+      else h += row(d[1], ro('blk-val-' + phase + '-' + d[0], tips[d[0]]));
+    });
+    return h + '<div class="note" style="margin-top:6px">' + tt('All amounts are per annum, in {cur}.', { cur: esc(state.currency) }) + '</div>' +
+      more('applications', 'Set each application and delivery team separately, or build the value from detailed calculators (Applications tab).');
+  }
+  /* The roll-ups in the two blocks, and their headings: what each set costs to build, how long it takes and what it is worth a year. */
+  function syncBlocks() {
+    var list = E.ensureList(state), M = C.money, MS = C.moneyShort, full = rmRuns ? rmRuns.roadmap : res, set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
+    ['initial', 'roadmap'].forEach(function (ph) {
+      var b = blockOf(ph), road = ph === 'roadmap', cost = 0, months = 0, v = { cost: 0, rev: 0, risk: 0 }, k = 0;
+      list.forEach(function (p, i) {
+        if (p.include === false) return;
+        var mine = (p.phase === 'roadmap') === road, pr = full && full.os && full.os.projects ? full.os.projects[k] : null; k++;
+        if (!mine) return;
+        months += num0(p.months); if (pr) cost += pr.teamCost || 0;
+        var t = E.buildValue(p); v.cost += t.cost; v.rev += t.rev; v.risk += t.risk;
+      });
+      set('blk-cost-' + ph, M(cost)); set('blk-months-' + ph, tt('{n} months', { n: f1(months) }));
+      ['cost', 'rev', 'risk'].forEach(function (d) { set('blk-val-' + ph + '-' + d, M(v[d])); });
+      set(road ? 'fs-road' : 'fs-init', !b.on ? tt('Off') : M(cost) + ' · ' + tt('{n} months', { n: f1(months) }) + ' · ' + tt('{amt} a year', { amt: MS(v.cost + v.rev + v.risk) }));
+    });
+  }
+  /* Switch the roadmap on or off: its applications are included or left out; with none yet, a starting roadmap is made from the initial applications. */
+  function setRoadmap(on) {
+    var b = blockOf('roadmap'), list = E.ensureList(state), groups = E.ensureGroups(state);
+    if (!on) { b.idx.forEach(function (i) { list[i].include = false; }); return; }
+    if (b.idx.length) { b.idx.forEach(function (i) { list[i].include = true; }); return; }
+    var ini = blockOf('initial'), first = ini.first !== undefined ? list[ini.first] : null, cost = 0, months = first ? num0(first.months) : 3, k = 0, vals = { cost: 120000, rev: 120000, risk: 60000 };
+    list.forEach(function (p, i) { if (p.include === false) return; if (i === ini.first && res && res.os.projects[k]) cost = res.os.projects[k].teamCost || 0; k++; });
+    if (first) { vals = { cost: 0, rev: 0, risk: 0 }; var t = E.buildValue(first); vals.cost = t.cost; vals.rev = t.rev; vals.risk = t.risk; }
+    var quote = Math.round(2.5 * (cost || 200000) / 10000) * 10000, gid, spare = groups.filter(function (g) { return !list.some(function (p) { return p.group === g.id; }); })[0];   // a delivery team left empty by earlier changes is used again
+    if (spare) { gid = spare.id; spare.mode = 'quote'; if (!(num0(spare.quote) > 0)) spare.quote = quote; }
+    else { gid = 'g' + (groups.length + 1); while (groups.some(function (g) { return g.id === gid; })) gid += 'x'; groups.push({ id: gid, name: tt('Roadmap'), rate: 100, mode: 'quote', quote: quote, start: { mode: 'after', date: '', team: '', months: 0 } }); }
+    var np = { name: tt('Roadmap'), include: true, months: Math.max(1, months * 2), devs: first ? first.devs : 3, group: gid, phase: 'roadmap', build: [] };
+    [['cost', 'rev', 'risk']].forEach(function (ks) { ks.forEach(function (d) { var l = E.newLine('simple', { driver: d }); l.amount = Math.round(4 * (vals[d] || 100000) / 10000) * 10000; np.build.push(l); }); });
+    list.push(np);
+    if (!(num0(state.roadmap && state.roadmap.licence && state.roadmap.licence.os) > 0)) { state.roadmap = state.roadmap || { licence: { os: 0, sentry: 0 } }; state.roadmap.licence = state.roadmap.licence || { os: 0, sentry: 0 }; state.roadmap.licence.os = Math.round(1.5 * num0(state.platform.os) / 5000) * 5000; }
+  }
   function buildKey() {
     var cur = state.currency, opts = '', groups = {};
     R.GEOS.forEach(function (g) {
@@ -324,45 +405,6 @@
       '<div class="row' + (state.altType === 'other' ? '' : ' hidden') + '" id="altNameRow"><label>Name</label>' +
       '<input type="text" data-text="altName" value="' + esc(state.altName) + '"></div>' +
       more('rates', 'The hourly cost of each role in the country\'s own currency, viewable and changeable (Rates tab).'));
-    var list = E.ensureList(state), one = list.length === 1, simple = E.isSimple(state);
-    var groups = E.ensureGroups(state), g0 = groups[0], multiG = groups.length > 1, quote = !multiG && g0.mode === 'quote';
-    var rollTip = function (what) { return C.tip('Added up from the applications', what + ' ' + tt('Click to edit the applications.')); };
-    var hDel = fold('delivery', 'Portfolio delivery', 'fs-del',
-      (one
-        ? row('Months to deliver portfolio', inp('projectList.0.months', 0.5, 0.1, 60),
-          'How long OutSystems takes to deliver the portfolio: the delivery team\'s active work on design, build and fixes. The alternative\'s time is projected from this using the time-to-production comparison. With more than one application, each has its own months and this is added up from them.', 'projectList.0.months')
-        : row('Months to deliver portfolio', '<div class="ro locked" id="dm-ro" data-go="applications#projectList.*.months"' + rollTip('Each application has its own months, and one team delivers them one after another, so the portfolio\'s months are added up from them.') + '></div>',
-          'The portfolio\'s months are worked out from the months of each application. Click to edit them on the Applications tab.')) +
-      '<div class="note" style="margin-top:6px">' + tt('{a} of {b} applications included.', { a: list.filter(function (p) { return p.include !== false; }).length, b: list.length }) + '</div>' +
-      more('applications', 'List the individual applications, or groups of applications: their names, months to deliver, developers and value calculators, and switch them on or off (Applications tab).') +
-      '<div class="sub" style="margin-top:8px">' + tt('OutSystems delivery cost') + '</div>' +
-      (multiG ? '' : '<div class="radios"><label><input type="radio" name="deliveryMode" value="team"' + (!quote ? ' checked' : '') + '> ' + tt('Developer based') + '</label>' +
-      '<label><input type="radio" name="deliveryMode" value="quote"' + (quote ? ' checked' : '') + '> ' + tt('Given cost') + '</label></div>') +
-      (one
-        ? row('Developers', inp('projectList.0.devs', 1, 1, 200), 'OutSystems developers. The architects, testers, analysts, project managers and others they imply come from the role mix, at the country\'s rate for each role. The alternative\'s team is worked out from this.', 'projectList.0.devs')
-        : row('Developers', '<div class="ro locked" id="dv-ro" data-go="applications#projectList.*.devs"' + rollTip('Each application has its own team size; this is their average, weighted by months.') + '>' + f1(E.avgDevs(state)) + '</div>',
-          'OutSystems developers on an application. Each application has its own number on the Applications tab.')) +
-      (quote ? '' : (function () {   // one experience level for the portfolio, linked to the delivery teams until they differ
-        var ex = E.teamExperience(state), opts = SKILL_LEVELS.map(function (x) { return '<option value="' + x[0] + '"' + (ex === x[0] ? ' selected' : '') + '>' + esc(tt(x[1])) + '</option>'; }).join('');
-        if (ex === 'custom') opts += '<option value="custom" selected disabled>' + esc(tt('Custom')) + '</option>';
-        if (ex === null) opts += '<option value="" selected disabled>' + esc(tt('Different for each team')) + '</option>';
-        return row('Developers\' experience', '<select data-gexpall="1"' + (ex === null || ex === 'custom' ? ' disabled' : '') + '>' + opts + '</select>',
-          'How experienced the developers are. Less experienced developers are paid less but take longer, and need training with OutSystems. This applies to every delivery team while they share one level; once the teams differ it shows that and is set for each team on the Applications tab.');
-      })()) +
-      (multiG
-        ? '<div class="note" data-go="applications"><a class="more">' + tt('Delivery cost and rate levels are set for each delivery team (Applications tab).') + '</a></div>'
-        : (quote
-          ? row('Delivery cost <i>' + esc(curSym()) + '</i>', inp('deliveryGroups.0.quote', 10000, 0), 'What OutSystems delivery of the whole portfolio will cost (people and time). With the developers above, this sets the rate level of the delivery team, so the alternative\'s cost follows from its longer time to production, its team size and its team mix.', 'deliveryGroups.0.quote') + '<div class="note" id="rate-implied"></div>'
-          : row('Rate level (%)', inp('deliveryGroups.0.rate', 5, 10, 500), 'How the delivery people\'s cost compares with the reference rates for the country: 100% uses them as they are; a partner might be 140% and an internal team 85%.', 'deliveryGroups.0.rate'))) +
-      more('team', 'Person-days and cost by role and by skill domain and phase, for each approach, with the reasons they differ (Team tab).'));
-    var pl = E.projectList(state), sum = { cost: 0, risk: 0, rev: 0 };
-    pl.forEach(function (p) { ['cost', 'risk', 'rev'].forEach(function (k) { sum[k] += p.value[k]; }); });
-    function vrow(label, key, tipText) {
-      var ix = E.simpleIndex(state, key);
-      if (simple && ix >= 0) return row(label, inp('projectList.0.build.' + ix + '.amount', 10000, 0), tipText, 'projectList.0.build.' + ix + '.amount');
-      if (simple) return row(label, '<button type="button" class="b" data-act="sv-add" data-k="' + key + '">' + tt('Add') + '</button>', tipText);
-      return row(label, '<div class="ro locked" id="vr-' + key + '" data-go="applications"' + rollTip('') + '>' + C.money(sum[key]) + '</div>', tipText + ' ' + tt('This is the sum of the applications; click it to edit them on the Applications tab.'));
-    }
     var money = ' ' + tt('Amounts are per annum, in {cur}, the currency chosen above.', { cur: cur });
     var hOrg = fold('org', 'Your organisation', 'fs-org',
       row('Employees', '<input type="number" data-path="org.employees" data-scope="state" step="1000" min="0" value="' + (num0(state.org && state.org.employees) || '') + '" placeholder="' + esc(tt('Optional')) + '">', 'Total employees. Optional. Used only to set sensible starting figures when you add a calculator or choose an application type, for example how many people use a workflow application. It never changes a figure you have already set.') +
@@ -375,25 +417,19 @@
       '<div class="note">' + (state.org && state.org.auto === false
         ? tt('Your own figures.') + ' <a class="more" data-act="org-auto">' + tt('Use the typical organisation for {country}', { country: esc(tt(R.byId(state.country).name)) }) + '</a>'
         : tt('Starts from a typical large organisation in {country}: placeholders to replace with the customer\'s own figures.', { country: esc(tt(R.byId(state.country).name)) })) + '</div>', false);
-    var hVal = fold('value', 'Portfolio business value', 'fs-val',
-      vrow('Cost savings', 'cost', tt('Hard saving for the whole portfolio, each year once it is live: effort or licences no longer needed. Same for both approaches; OutSystems gets it sooner.') + money) +
-      vrow('Revenue uplift', 'rev', tt('Soft benefit for the whole portfolio, each year once it is live: extra revenue or process efficiency.') + money) +
-      vrow('Risk reduction', 'risk', tt('Soft benefit for the whole portfolio, each year once it is live: expected loss avoided (probability x impact x reduction).') + money) +
-      '<div class="note" style="margin-top:6px">' + tt('All amounts are per annum, in {cur}.', { cur: esc(cur) }) + ' ' + (simple ? tt('These are the portfolio\'s simple value calculators (Applications tab).') : tt('Added up from the applications.')) + '</div>' +
-      more('applications', 'Set the value of each application separately, or build it from detailed calculators (Applications tab).'), true);
     var altN = esc(altShort());
     function pr(label, id, os, alt, tip) { return '<div class="pair"><span' + (tip ? C.tip(tt(label), tt(tip)) : '') + '>' + label + '</span><div class="ro" id="kp-' + id + '-alt">' + alt + '</div><div class="ro" id="kp-' + id + '-os">' + os + '</div></div>'; }
-    var hPlat = fold('platform', 'Platform costs', 'fs-plat',
-      row('Platform licence <i>' + esc(curSym()) + '</i>', inp('platform.os', 5000, 0), 'Annual OutSystems platform licence. It is the same whether OutSystems hosts it (PaaS) or the organisation does (self-managed); only the infrastructure, people and setup differ.', 'platform.os') +
-      row('Additional Sentry licence <i>' + esc(curSym()) + '</i>', inp('platform.sentry', 5000, 0), 'The extra annual licence for the Sentry security and compliance add-on, on top of the platform licence. It is charged only when Sentry is included (ticked below, or chosen on Infrastructure > Compare). Sentry is available on PaaS only. Placeholder: to be replaced with the real price.') +
+    var hHost = fold('platform', 'Platform', 'fs-plat',
       row('OutSystems hosting', hostingSelect(),
-        'PaaS: OutSystems provisions and runs the cloud, so there is no extra infrastructure or operating people, and no setup. ODC + Sentry (PaaS) adds the Sentry security and compliance package (an extra licence). Self-managed: the organisation runs it on its own cloud, so it pays for infrastructure and some operating people, but setup is prescriptive and cheap and maintenance is simpler than a cloud-native build.') +
-      assureCheck() + '<div class="note" id="assure-note" style="margin:2px 0 6px"></div>' +
+        'PaaS: OutSystems provisions and runs the cloud, so there is no extra infrastructure or operating people, and no setup. Self-managed: the organisation runs it on its own cloud, so it pays for infrastructure and some operating people, but setup is prescriptive and cheap and maintenance is simpler than a cloud-native build. High assurance (Sentry on PaaS) is set for each part below.') +
+      '<div class="note" id="assure-note" style="margin:2px 0 6px"></div>' +
       '<div class="pair head"><span></span><b>' + altN + '</b><b class="os">OutSystems</b></div>' +
-      pr('Licences', 'lic', '', '', tt('The yearly platform licence: OutSystems only. The alternative has none; its tools are under Tooling and services.')) + pr('Tooling and services', 'tool', '', '', tt('The yearly tools and services each approach needs besides the platform licence: for the alternative, the tools it uses on top of the cloud; for OutSystems, the share it still needs and the services you run whatever the hosting.')) + pr('Infrastructure', 'inf', '', '', tt('The yearly cloud infrastructure each approach needs to run the applications. Hover the OutSystems figure to see why it can be zero.')) + pr('Operating people (FTE)', 'ops', '', '', tt('Full-time equivalents of operations people needed to run each approach once the applications are live.')) +
-      '<div class="sub" style="margin-top:8px"' + C.tip('Setup costs', 'One-off costs to get started: for the alternative, hiring and onboarding a cloud team and building the infrastructure environment; for OutSystems, onboarding and training. Absorbed (the default) leaves them out so the comparison focuses on ongoing costs. Include counts them.') + '>Setup costs (one-off)</div>' +
+      pr('Licences', 'lic', '', '', tt('The yearly platform licence: OutSystems only. The alternative has none; its tools are under Tooling and services.')) + pr('Tooling and services', 'tool', '', '', tt('The yearly tools and services each approach needs besides the platform licence: for the alternative, the tools it uses on top of the cloud; for OutSystems, the part of them it still needs.')) +
+      '<div class="sub" style="margin-top:8px"' + C.tip('Setup costs', 'One-off costs to get started: for the alternative, hiring and onboarding a cloud team and building the infrastructure environment; for OutSystems, onboarding and training. Absorbed (the default) leaves them out so the comparison focuses on ongoing costs. Included counts them in the total over the period.') + '>' + tt('Setup costs') + '</div>' +
       setupIncLabel(state.setup.mode === 'included') +
-      more('infrastructure', 'Line-by-line comparison of tooling, infrastructure and operating people for each approach, the OutSystems hosting options, and setup costs (Platform and infrastructure tab).'));
+      more('infrastructure', 'Line-by-line comparison of tooling, infrastructure and operating people for each approach, the OutSystems hosting options, and setup costs (Platform and infrastructure tab).'), true);
+    var hInit = fold('init', 'Initial application(s)', 'fs-init', blockHtml('initial'), true);
+    var hRoad = fold('road', 'Roadmap', 'fs-road', blockHtml('roadmap'), true);
     var hNote = '<div class="note">Illustrative placeholder values. Every setting behind these figures is on the tabs above.</div>';
     var per = ''; for (var yy = 1; yy <= 10; yy++) per += '<option value="' + yy + '"' + (yy === state.horizon ? ' selected' : '') + '>' + (yy === 1 ? tt('1 year') : tt('{n} years', { n: yy })) + '</option>';
     var scOpts = Object.keys(E.CASES).concat(['custom']).map(function (k) { return '<option value="' + k + '"' + (k === (E.caseOf(state) || 'custom') ? ' selected' : '') + '>' + tt(k === 'custom' ? 'Custom' : E.CASES[k].label) + '</option>'; }).join('');
@@ -404,8 +440,8 @@
       row('Licence start date', '<input type="date" data-text="licenceStart" value="' + esc(state.licenceStart || '') + '"' + (state.startDate ? '' : ' disabled') + '>', 'Optional. When the platform licences start being charged, if that is not the project start. Left blank, they start with the project. Needs the assessment start date.') +
       '<div class="row"><label' + C.tip('Hard savings only', tt('Leaves out soft benefits (risk reduction and revenue uplift) and keeps cost savings, cost differences and anything else that can be verified. A more cautious view.')) + ' style="cursor:help">' + tt('Hard savings only') + '</label><input type="checkbox" id="hardOnly2"' + (state.hardOnly ? ' checked' : '') + '></div>' +
       more('assumptions', 'Set the percentages behind each scenario (Analysis settings tab).'), true);
-    /* Value comes first, with the settings that frame it (scenario, period); then what it costs: delivery, then platform. */
-    h += hOrg + hVal + hAna + hDel + hPlat + hNote;
+    /* The organisation, how OutSystems is hosted, then the initial applications and the roadmap, each with its licence, development cost, time and value; the settings that frame the analysis last. */
+    h += hOrg + hHost + hInit + hRoad + hAna + hNote;
     $('keypanel').innerHTML = h;
   }
 
@@ -1233,11 +1269,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       set('bd-ops-of' + i, r2(Number(it.fte) * os(it) * hm)); set('bd-ops-ac' + i, M(Number(it.fte) * perFte)); set('bd-ops-oc' + i, M(Number(it.fte) * os(it) * perFte * hm));
     });
     var pl2 = E.projectList(state), tv = 0; pl2.forEach(function (p) { ['cost', 'risk', 'rev'].forEach(function (k) { tv += Number(p.value[k]); }); });
-    set('dm-ro', tt('{n} months, from the applications', { n: f1(state.deliveryMonths) }));
     var scn = E.caseOf(state); set('fs-ana', tt(scn ? E.CASES[scn].label : 'Custom') + ' · ' + tt('{n} years', { n: state.horizon }));
     set('fs-ctx', R.byId(state.country).name + ' · ' + state.currency + ' · vs ' + shorten(altLabel(), 22));
-    set('fs-del', tt('{m} months', { m: state.deliveryMonths }) + ' · ' + (pl2.length === 1 ? tt('1 application') : tt('{n} applications', { n: pl2.length })) + ' · ' + M(E.run(state).os.sumCost.team));
-    set('fs-val', tt('{amt} a year across the portfolio', { amt: MS(tv) }));
     var og = state.org || {}; set('fs-org', num0(og.employees) > 0 || num0(og.customers) > 0 ? tt('{e} employees · {c} customers', { e: num0(og.employees) > 0 ? Math.round(og.employees).toLocaleString('en-US') : '–', c: num0(og.customers) > 0 ? Math.round(og.customers).toLocaleString('en-US') : '–' }) : tt('Not set'));
     set('fs-plat', CFG_ROWS.filter(function (c) { return c[0] === cfgKey(); })[0][1] + ' · ' + tt('licences {a} a year · infrastructure {b} · people {c} FTE', { a: MS(osLic), b: MS(osInfra), c: r2(E.opsFteTotal(state, 'os')) }));
     var ah = Number(state.team.hours) * 52;
@@ -1575,7 +1608,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       set('apptot-' + i, M(t.cost + t.rev + t.risk));
       if (p.include !== false) { var side = p.phase === 'roadmap' ? rmTot.b : rmTot.a; side.n++; side.v += t.cost + t.rev + t.risk; }
     });
-    set('rmsum', tt('Today: {a} applications, {av} a year · Roadmap: {b} applications, {bv} a year', { a: rmTot.a.n, av: M(rmTot.a.v), b: rmTot.b.n, bv: M(rmTot.b.v) }));
+    set('rmsum', tt('Initial: {a} applications, {av} a year · Roadmap: {b} applications, {bv} a year', { a: rmTot.a.n, av: M(rmTot.a.v), b: rmTot.b.n, bv: M(rmTot.b.v) }));
   }
   function num0(x) { var n = parseFloat(x); return isFinite(n) ? n : 0; }
 
@@ -1597,8 +1630,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function buildProjects() {
     var cur = state.currency, list = E.ensureList(state), groups = E.ensureGroups(state), gcol = groups.length > 1;
     E.migrateMonths(state); E.deriveMonths(state);
-    var rm = !!(state.roadmap && state.roadmap.on);
-    var head = '<div class="apph head' + (gcol ? ' g' : '') + (rm ? ' rm' : '') + '"><span></span><span></span><span' + C.tip('Application or group', 'A row is one application, or a group of related applications that are delivered together. Name it either way. The portfolio starts as one row that stands for all of them.') + '>' + tt('Application or group of applications') + '</span>' + (rm ? '<span' + C.tip(tt('When'), tt('Today: built now, the first step. Roadmap: built later, and it needs the extra licence set above. The roadmap applications are built after today\'s.')) + '>' + tt('When') + '</span>' : '') + '<span' + C.tip('Type', 'What kind of application this is, such as a self-service portal, digital onboarding, claims handling or permits. Picking a type adds the usual calculators for it with placeholder numbers to replace. Optional: leave it blank to build the value yourself.') + '>' + tt('Type') + '</span>' + (gcol ? '<span' + C.tip('Delivery team', 'Who delivers this application, and at what cost level. Set up the delivery teams below.') + '>' + tt('Delivery team') + '</span>' : '') +
+    var rm = true;   // every application is Initial or Roadmap
+    var head = '<div class="apph head' + (gcol ? ' g' : '') + (rm ? ' rm' : '') + '"><span></span><span></span><span' + C.tip('Application or group', 'A row is one application, or a group of related applications that are delivered together. Name it either way. The portfolio starts as one row that stands for all of them.') + '>' + tt('Application or group of applications') + '</span>' + (rm ? '<span' + C.tip(tt('When'), tt('Initial: built first. Roadmap: built later, and it needs the extra licence set above. The roadmap applications are built after the initial ones.')) + '>' + tt('When') + '</span>' : '') + '<span' + C.tip('Type', 'What kind of application this is, such as a self-service portal, digital onboarding, claims handling or permits. Picking a type adds the usual calculators for it with placeholder numbers to replace. Optional: leave it blank to build the value yourself.') + '>' + tt('Type') + '</span>' + (gcol ? '<span' + C.tip('Delivery team', 'Who delivers this application, and at what cost level. Set up the delivery teams below.') + '>' + tt('Delivery team') + '</span>' : '') +
       '<span' + C.tip('Months', 'How long the OutSystems team is actively working on this application (or group): design, build and fixes, not time waiting in review queues. One team delivers the applications one after another, so the portfolio\'s months are the total.') + '>' + tt('Months') + '</span>' +
       '<span' + C.tip('Developers', 'OutSystems developers on this application. The architects, testers, analysts and others they imply come from the role mix. The alternative\'s team is worked out from this.') + '>' + tt('Developers') + '</span>' +
       '<span' + C.tip('Value per year', tt('The yearly value of this application once it is live, added up from its calculators, in {cur}.', { cur: cur })) + '>' + tt('Value per year') + '</span>' +
@@ -1606,7 +1639,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var appCard = function (p, i) {
       var on = p.include !== false, base = 'projectList.' + i, open = isAppOpen(i, list.length);
       return '<div class="appc' + (on ? '' : ' off') + (open ? '' : ' closed') + '" data-i="' + i + '"><div class="apph' + (gcol ? ' g' : '') + (rm ? ' rm' : '') + '"><button type="button" class="b car" data-appfold="' + i + '" title="' + esc(tt('Show or hide the value details')) + '">' + (open ? '▾' : '▸') + '</button><input type="checkbox" data-incl="' + i + '"' + (on ? ' checked' : '') + C.tip('Include in the assessment', 'Switch off to leave this application out of every number and chart.') + '>' +
-        '<input type="text" data-tpath="' + base + '.name" value="' + esc(p.name) + '">' + (rm ? bsel(base + '.phase', [['today', tt('Today')], ['roadmap', tt('Roadmap')]], p.phase === 'roadmap' ? 'roadmap' : 'today') : '') + typeSelect(i, p) +
+        '<input type="text" data-tpath="' + base + '.name" value="' + esc(p.name) + '">' + (rm ? bsel(base + '.phase', [['today', tt('Initial')], ['roadmap', tt('Roadmap')]], p.phase === 'roadmap' ? 'roadmap' : 'today') : '') + typeSelect(i, p) +
         (gcol ? '<select data-bsel="' + base + '.group">' + groups.map(function (g) { return '<option value="' + esc(g.id) + '"' + (g.id === p.group ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select>' : '') + inp(base + '.months', 0.5, 0.1, 60) + inp(base + '.devs', 1, 1, 200) +
         '<b class="ro" id="apptot-' + i + '"></b><b class="ro" id="appcost-' + i + '"></b>' +
         (list.length > 1 ? '<button class="b" data-act="remove" data-i="' + i + '" title="' + esc(tt('Remove this application')) + '">×</button>' : '<span></span>') + '</div>' + builderPanel(i, p) + '</div>';
@@ -1616,12 +1649,11 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       return '<div class="dgroup' + (open ? '' : ' closed') + '" data-g="' + esc(g.id) + '">' + groupHeader(g, gi, groups.length, open) +
         '<div class="dgbody"><div class="appwrap">' + head + inGroup + '</div><p><button class="b" data-act="add" data-g="' + esc(g.id) + '">' + tt('Add application') + '</button>' + (list.length > 1 ? ' <a class="more" data-appfoldall="open">' + tt('Expand all') + '</a> · <a class="more" data-appfoldall="close">' + tt('Collapse all') + '</a>' : '') + '</p></div></div>';
     }).join('');
-    var rmBar = '<div class="rmbar"><label class="chk"' + C.tip(tt('Compare with a roadmap'), tt('Tag each application as Today or Roadmap to compare OutSystems today with OutSystems plus the roadmap, each against the alternative building the same applications. The roadmap needs an extra licence, set here.')) + '><input type="checkbox" data-rmon="1"' + (rm ? ' checked' : '') + '> ' + tt('Compare with a roadmap') + '</label>' +
-      (rm ? '<div class="rmpanel">' +
-        row('Extra licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.os', 5000, 0), 'The extra yearly OutSystems platform licence the roadmap needs, on top of the licence for today\'s applications.', 'roadmap.licence.os') +
-        row('Extra Sentry licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.sentry', 5000, 0), 'The extra yearly Sentry licence the roadmap needs, if any.', 'roadmap.licence.sentry') +
-        '<div class="note">' + tt('The extra licence is charged each year from when the first roadmap application starts. Roadmap applications are built after today\'s within each team. Hosting, operating people and the alternative\'s tooling stay the same unless you change them.') + '</div>' +
-        (E.roadmapOn(state) ? '<div class="note" id="rmsum"></div>' : '<div class="note" style="color:var(--warn)">' + tt('To compare, leave at least one included application as Today and tag at least one as Roadmap.') + '</div>') + '</div>' : '') + '</div>';
+    var rmBar = '<div class="rmbar"><div class="rmpanel"><div class="note" style="margin:0 0 6px">' + tt('Each application is Initial or Roadmap. OutSystems with the initial applications is compared with OutSystems plus the roadmap, each against the alternative building the same applications. The roadmap needs an extra licence, set here.') + '</div>' +
+      row('Extra licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.os', 5000, 0), 'The extra yearly OutSystems platform licence the roadmap needs, on top of the licence for the initial applications.', 'roadmap.licence.os') +
+      row('Extra Sentry licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.sentry', 5000, 0), 'The extra yearly Sentry licence the roadmap needs, if any.', 'roadmap.licence.sentry') +
+      '<div class="note">' + tt('The extra licence is charged each year from when the first roadmap application starts. Roadmap applications are built after the initial ones within each team. Hosting, operating people and the alternative\'s tooling stay the same unless you change them.') + '</div>' +
+      (E.roadmapOn(state) ? '<div class="note" id="rmsum"></div>' : '<div class="note" style="color:var(--warn)">' + tt('To compare, keep at least one included application as Initial and at least one as Roadmap.') + '</div>') + '</div></div>';
     $('cfg-applications').innerHTML = page('Applications', tt('The portfolio starts as one application that stands for all of them, with its value as simple calculators for cost savings, revenue uplift and risk reduction. Add detailed calculators, or more applications, when you want more precision; nothing already entered is thrown away. Applications are delivered one after another by one team.'),
       '<div class="card" style="grid-column:1/-1"><div class="note" style="margin:0 0 8px">' +
       tt('A delivery team is whoever delivers some of the applications (an internal team, a partner or a supplier), with its own cost level. Developer based: the developers and roles are costed at the reference rates times the rate level (a partner might be 140%, an internal team 85%). Given cost: you enter what its applications will cost and the rate level follows from it. Applications are still delivered one after another.') + '</div>' +
@@ -2028,7 +2060,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function onChange(ev) {
     var t = ev.target, sp = t.dataset && t.dataset.special;
-    if (t.dataset && t.dataset.rmon !== undefined) { state.roadmap = state.roadmap || { on: false, licence: { os: 0, sentry: 0 } }; state.roadmap.on = !!t.checked; buildProjects(); recalc(); return; }   // compare with a roadmap
+    if (t.dataset && t.dataset.rmblock !== undefined) { setRoadmap(!!t.checked); buildKey(); buildProjects(); recalc(); return; }   // include or leave out the roadmap
+    if (t.dataset && t.dataset.rmsentry !== undefined) { state.roadmap = state.roadmap || { licence: { os: 0, sentry: 0 } }; state.roadmap.licence = state.roadmap.licence || { os: 0, sentry: 0 }; state.roadmap.licence.sentry = t.checked ? (num0(state.roadmap.licence.sentry) || Math.round(0.15 * num0(state.roadmap.licence.os) / 1000) * 1000) : 0; buildKey(); recalc(); return; }   // Sentry for the roadmap
     if (t.dataset && t.dataset.asck !== undefined) { asSel[t.dataset.asck] = !!t.checked; return; }   // an assessment ticked for deleting
     if (t.dataset && t.dataset.gexpall !== undefined) { if (E.setTeamExperience(state, t.value)) { E.ensureGroups(state); buildProjects(); recalc(); } return; }   // the portfolio's experience level
     if (t.dataset && t.dataset.gskill !== undefined) { var sg2 = E.ensureGroups(state)[parseInt(t.dataset.gskill, 10)]; if (sg2) { if (t.value === 'custom' && sg2.skill !== 'custom') { var cur0 = E.skillOf(state, sg2); sg2.custom = { pace: cur0.pace, discount: cur0.discount, enable: cur0.enable }; } sg2.skill = t.value; gqOpen[sg2.id] = true; E.ensureGroups(state); buildProjects(); buildInputs(); recalc(); } return; }   // a team's experience with OutSystems
@@ -2064,6 +2097,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     else if (t.dataset && t.dataset.bsel) {
       setPath(t.dataset.bsel, t.value);
       var gm = /^(projectList\.\d+\.build\.\d+)\.group$/.exec(t.dataset.bsel); if (gm) refreshLine(getPath(gm[1]));
+      if (/^projectList\.\d+\.(phase|group)$/.test(t.dataset.bsel)) buildKey();   // which set an application is in (and its team) decides what the Initial and Roadmap blocks edit
       buildProjects(); recalc();
     }
     else if (sp === 'altType') {
@@ -2178,7 +2212,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       series: [
         { name: 'OutSystems', color: 'var(--os)', data: r.os.cum, width: 3 },
         { name: alt, color: 'var(--alt)', data: r.alt.cum, dash: true, width: 2.5 }
-      ].concat(rmRuns ? [{ name: viewScenario() === 'roadmap' ? tt('OutSystems today') : tt('OutSystems + roadmap'), color: 'color-mix(in srgb, var(--os) 45%, transparent)', data: rmRuns[viewScenario() === 'roadmap' ? 'today' : 'roadmap'].os.cum, dash: true, width: 2 }] : []),
+      ].concat(rmRuns ? [{ name: viewScenario() === 'roadmap' ? tt('OutSystems, initial applications') : tt('OutSystems, initial + roadmap'), color: 'color-mix(in srgb, var(--os) 45%, transparent)', data: rmRuns[viewScenario() === 'roadmap' ? 'today' : 'roadmap'].os.cum, dash: true, width: 2 }] : []),
       markers: [
         { week: r.os.paybackWeek, label: 'OutSystems payback ' + months(r.os.paybackMonths, r.os.paybackWeek), color: 'var(--os)', row: 0,
           tip: 'Cumulative value minus cost turns positive here and stays positive.' },
@@ -2463,12 +2497,12 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     if (rmRuns) {   // with a roadmap: how the advantage builds as applications are added, and what the roadmap adds
       var T0 = rmRuns.today, F0 = rmRuns.roadmap, AD = rmRuns.adds, ix = function (id) { for (var q = 0; q < defsList.length; q++) if (defsList[q].id === id) return q; return -1; };
       defsList.splice(ix('bridge'), 0, { id: 'rmbuild', tab: 'The roadmap', step: 5, title: 'Advantage as applications are added', full: false, svg: svgRmBuild(),
-        cap: 'The net present value advantage over the alternative as each application is built, in build order: today\'s first, then the roadmap, with the roadmap licence from its first application.',
+        cap: 'The net present value advantage over the alternative as each application is built, in build order: the initial ones first, then the roadmap, with the roadmap licence from its first application.',
         read: 'Each bar is the advantage if the portfolio stopped after that application. The first applications may show little, or none, because the platform and its licence are paid for before there is much to build on. As more applications are built the advantage grows. The dashed line marks where the roadmap, and its extra licence, begin.',
-        take: tt('Today\'s applications leave OutSystems {a} ahead of {alt}; with the roadmap the advantage is {b}. The roadmap adds {c} net, after {lic} of extra licence.', { a: MS(T0.advantage), alt: alt, b: MS(F0.advantage), c: MS(AD.npv), lic: MS(AD.pvLicence) }) });
+        take: tt('The initial applications leave OutSystems {a} ahead of {alt}; with the roadmap the advantage is {b}. The roadmap adds {c} net, after {lic} of extra licence.', { a: MS(T0.advantage), alt: alt, b: MS(F0.advantage), c: MS(AD.npv), lic: MS(AD.pvLicence) }) });
       defsList.splice(ix('bridge') + 1, 0, { id: 'rmadds', tab: 'What the roadmap adds', min: 'case', title: 'What the roadmap adds', full: false, svg: svgRmAdds(),
-        cap: 'OutSystems today to OutSystems with the roadmap: the extra value, the extra delivery and running cost, and the extra licence. Every bar adds up.',
-        read: 'Start with the grey bar: the net present value of OutSystems for today\'s applications. Green is value the roadmap adds; red is what it costs, shown separately for the extra licence and for everything else. The last bar is OutSystems with the roadmap. The roadmap is worth doing when the green outweighs the red.',
+        cap: 'OutSystems with the initial applications to OutSystems with the roadmap: the extra value, the extra delivery and running cost, and the extra licence. Every bar adds up.',
+        read: 'Start with the grey bar: the net present value of OutSystems for the initial applications. Green is value the roadmap adds; red is what it costs, shown separately for the extra licence and for everything else. The last bar is OutSystems with the roadmap. The roadmap is worth doing when the green outweighs the red.',
         take: tt('The roadmap adds {value} of value and {other} of delivery and running cost, plus {lic} of extra licence: a net {npv} over {yrs} years, in present value.', { value: MS(AD.pvValue), other: MS(AD.pvOther), lic: MS(AD.pvLicence), npv: MS(AD.npv), yrs: state.horizon }) });
     }
     return defsList;
@@ -2501,8 +2535,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function svgRmAdds() {
     var T0 = rmRuns.today, F0 = rmRuns.roadmap, AD = rmRuns.adds, yrs = state.horizon;
     return C.waterfall({
-      start: { label: 'OutSystems today', value: T0.os.npv, tip: tt('Present value of everything OutSystems delivers for today\'s applications minus everything it costs over {n} years.', { n: yrs }) },
-      end: { label: 'OutSystems + roadmap', value: F0.os.npv, tip: tt('The same measure with the roadmap built as well. The difference from the left-hand bar is what the roadmap adds.') },
+      start: { label: 'Initial applications', value: T0.os.npv, tip: tt('Present value of everything OutSystems delivers for the initial applications minus everything it costs over {n} years.', { n: yrs }) },
+      end: { label: 'Initial + roadmap', value: F0.os.npv, tip: tt('The same measure with the roadmap built as well. The difference from the left-hand bar is what the roadmap adds.') },
       items: [
         { label: 'Value from the roadmap applications', delta: AD.pvValue, hard: false, tip: tt('Present value of what the roadmap applications earn once live.') },
         { label: 'Delivery and running cost of the roadmap', delta: -AD.pvOther, hard: true, tip: tt('Present value of building and running the roadmap applications: the delivery team, AI tokens, upkeep and the rest, apart from the extra licence.') },
@@ -2515,7 +2549,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function tile(k, v, s, tipKey, to, d, rm) {   // d: an optional difference to show as a pill, { t: text, good: true when OutSystems is better }
     var hp = HELP[tipKey].split('::');
     return '<div class="tile"' + (to ? ' data-sub="' + to + '"' : '') + C.tip(hp[0], hp[1] + (to ? '\n\n' + tt('Click for the breakdown.') : '')) + '><div class="k">' + tt(k) + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div>' +
-      (rm ? '<div class="rmv"><span' + (viewScenario() === 'today' ? ' class="on"' : '') + '>' + tt('Today') + ' <b>' + rm.today + '</b></span><span' + (viewScenario() === 'roadmap' ? ' class="on"' : '') + '>' + tt('With roadmap') + ' <b>' + rm.roadmap + '</b></span></div>' : '') +
+      (rm ? '<div class="rmv"><span' + (viewScenario() === 'today' ? ' class="on"' : '') + '>' + tt('Initial') + ' <b>' + rm.today + '</b></span><span' + (viewScenario() === 'roadmap' ? ' class="on"' : '') + '>' + tt('With roadmap') + ' <b>' + rm.roadmap + '</b></span></div>' : '') +
       (d ? '<div class="d ' + (d.same ? 'same' : d.good ? 'good' : 'bad') + '">' + (d.same ? '● ' : d.good ? '▲ ' : '▼ ') + d.t + '</div>' : '') + '</div>';
   }
   function openSub(id) {
@@ -2621,7 +2655,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var vw = viewer(defs);
     $('sumsteps').innerHTML = vw.steps;   // the sub-tab row sits above the scenario row and the example-numbers banner, and stays in view
     var cs0 = E.caseOf(state), ctxLine = '<div class="ctxline">' + esc(tt('{case} scenario', { case: cs0 ? tt(E.casesOf(state)[cs0].label) : tt('Custom') }) + ' · ' + (state.horizon === 1 ? tt('1 year') : tt('{n} years', { n: state.horizon })) + ' · ' + (state.hardOnly ? tt('Hard savings only') : tt('Soft benefits included'))) + '</div>';
-    if (rmRuns) ctxLine += '<div class="rmtoggle"><span class="seg" role="group" aria-label="' + esc(tt('Scenario in view')) + '"><button type="button" data-rmview="today"' + (viewScenario() === 'today' ? ' class="on"' : '') + '>' + esc(tt('OutSystems today')) + '</button><button type="button" data-rmview="roadmap"' + (viewScenario() === 'roadmap' ? ' class="on"' : '') + '>' + esc(tt('OutSystems + roadmap')) + '</button></span></div>';
+    if (rmRuns) ctxLine += '<div class="rmtoggle"><span class="seg" role="group" aria-label="' + esc(tt('Scenario in view')) + '"><button type="button" data-rmview="today"' + (viewScenario() === 'today' ? ' class="on"' : '') + '>' + esc(tt('Initial applications')) + '</button><button type="button" data-rmview="roadmap"' + (viewScenario() === 'roadmap' ? ' class="on"' : '') + '>' + esc(tt('Initial + roadmap')) + '</button></span></div>';
     $('summary').innerHTML = (named ? '' : '<div class="exbanner" role="button" tabindex="0" data-focusname="1"' + C.tip(tt('Example numbers'), tt('Click to go to the name box and name the assessment.')) + '><b>' + tt('Example numbers') + '</b> ' + tt('These are placeholders, not the customer\'s figures. Name the assessment and replace them.') + '</div>') + ctxLine + vw.body +
       '<p class="note">' + tt('All figures use illustrative placeholder defaults, not benchmarks. Value is identical for both approaches; the advantage comes from cost and from reaching production sooner.') + '</p>';
     foldBoxes($('summary'));
@@ -3107,7 +3141,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     if (ps) ps.innerHTML = svgStages();
     updateStageTips();
     } finally { state = real; baseState = null; }
-    syncBuild(); syncYr(); updateRateNote(); updateProjectSummary();
+    syncBuild(); syncYr(); updateRateNote(); updateProjectSummary(); syncBlocks();
     scheduleSave();
     syncTitle();
     document.querySelectorAll('[data-path][data-scope="state"]').forEach(function (el) {
@@ -3203,7 +3237,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var gl = E.ensureGroups(state);
       if (gl.length > 1) { var gone = gl.splice(parseInt(t.dataset.i, 10), 1)[0]; state.projectList.forEach(function (p) { if (p.group === gone.id) p.group = gl[0].id; }); }
     }
-    else if (act === 'sv-add') { var sl = E.newLine('simple', { driver: t.dataset.k }); state.projectList[0].build.push(sl); }
+    else if (act === 'sv-add') { var sl = E.newLine('simple', { driver: t.dataset.k }); state.projectList[parseInt(t.dataset.i || '0', 10)].build.push(sl); }
     else if (act === 'bl-add') {
       var ap = state.projectList[parseInt(t.dataset.i, 10)]; ap.build = ap.build || [];
       var nl = E.newLine(t.dataset.t, t.dataset.t === 'simple' ? { driver: t.dataset.d } : lineDefaults()); if (nl.what) nl.what = tt(nl.what);   // the label starts in the reader's language
@@ -3421,7 +3455,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     ix.list = ix.list.filter(function (x) { return !gone[x.id]; }); if (gone[ix.cur]) ix.cur = ''; writeIndex(ix);
     if (gone[curId]) {
       curId = ''; var next = ix.list.slice().sort(function (a, b2) { return b2.t - a.t; })[0];
-      if (next) openAssessment(next.id, true); else { state = E.defaultState(); afterStateReplaced(); }
+      if (next) openAssessment(next.id, true); else { state = E.startState(); afterStateReplaced(); }
     } else buildAssessMenu();
   }
   function deleteAssessment(id) {
@@ -3519,7 +3553,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var d = ST.diff(E.defaultState(), state);
     if (!curId && d && Object.keys(d).length && !window.confirm('Start a new assessment? The current one is replaced (export it to Excel first if you want to keep it).')) return;   // an unnamed draft has nowhere else to live
     if (saveTimer) clearTimeout(saveTimer); if (curId) saveNow();
-    state = E.defaultState(); curId = ''; try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+    state = E.startState(); curId = ''; try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
     afterStateReplaced(); toast('Started a new assessment');
     var t = $('titleinp'); if (t) t.focus();
   }
@@ -3585,10 +3619,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     slides.push({ layout: 'content', title: tiles.length ? 'Summary' : 'Summary', items: items, footer1: f1t, footer2: f2t });
     var bf = bothFacts();   // with a roadmap: the six figures for today and with the roadmap, side by side
     if (bf) {
-      var cellOf = function (txt, o) { return Object.assign({ t: txt }, o); }, hdr = [cellOf('', { align: 'l' }), cellOf(tt('OutSystems today'), { align: 'r', bold: true }), cellOf(tt('OutSystems + roadmap'), { align: 'r', bold: true })];
-      slides.push({ layout: 'content', title: tt('Today and with the roadmap'), footer1: f1t, footer2: f2t, items: [
+      var cellOf = function (txt, o) { return Object.assign({ t: txt }, o); }, hdr = [cellOf('', { align: 'l' }), cellOf(tt('Initial applications'), { align: 'r', bold: true }), cellOf(tt('Initial + roadmap'), { align: 'r', bold: true })];
+      slides.push({ layout: 'content', title: tt('Initial applications and with the roadmap'), footer1: f1t, footer2: f2t, items: [
         { t: 'table', x: 0.56, y: 1.55, colW: [5.2, 3.5, 3.5], rowH: 0.55, size: 13, rows: [hdr].concat(bf.today.tiles.map(function (tl, i) { return [cellOf(tt(tl.k), { align: 'l', color: C0.muted }), cellOf(tl.v, { align: 'r', bold: true }), cellOf(bf.roadmap.tiles[i].v, { align: 'r', bold: true })]; })) },
-        { t: 'text', x: 0.56, y: 5.9, w: 12.21, h: 0.8, inset: 0, paras: [{ t: tt('Today\'s applications against today\'s applications plus the roadmap, each compared with the alternative building the same applications. The roadmap needs an extra licence from when it starts.'), size: 11, color: C0.muted }] }] });
+        { t: 'text', x: 0.56, y: 5.9, w: 12.21, h: 0.8, inset: 0, paras: [{ t: tt('The initial applications against the initial applications plus the roadmap, each compared with the alternative building the same applications. The roadmap needs an extra licence from when it starts.'), size: 11, color: C0.muted }] }] });
     }
     // chart slides
     var jobs = [];
