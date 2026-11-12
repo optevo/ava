@@ -1554,8 +1554,6 @@ AVAI18n.register("zh-tw", {
   "OutSystems {c} a year": "OutSystems 每年 {c}",
   "OutSystems {os}; the alternative {alt}.": "OutSystems {os}；替代方案 {alt}。",
   "OutSystems' cumulative cost does not stay below the alternative's within the horizon.": "在分析期間內，OutSystems 的累計成本未能持續低於替代方案。",
-  "OutSystems, initial + roadmap": "OutSystems，初始 + 路線圖",
-  "OutSystems, initial applications": "OutSystems，初始應用程式",
   "OutSystems, {c} a year": "OutSystems，每年 {c}",
   "OutSystems: additional tooling per year": "OutSystems：每年額外工具費用",
   "OutSystems: break/fix (% of build cost a year)": "OutSystems：故障修復 (每年占建置成本 %)",

@@ -2194,6 +2194,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     });
     return [lo, hi];
   }
+  /* "When it pays back": OutSystems against the alternative for the scenario in view (initial applications, or with the roadmap). */
   function svgPay() {
     var r = res, alt = altShort();
     return C.lineChart({
@@ -2202,7 +2203,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       series: [
         { name: 'OutSystems', color: 'var(--os)', data: r.os.cum, width: 3 },
         { name: alt, color: 'var(--alt)', data: r.alt.cum, dash: true, width: 2.5 }
-      ].concat(rmRuns ? [{ name: viewScenario() === 'roadmap' ? tt('OutSystems, initial applications') : tt('OutSystems, initial + roadmap'), color: 'color-mix(in srgb, var(--os) 45%, transparent)', data: rmRuns[viewScenario() === 'roadmap' ? 'today' : 'roadmap'].os.cum, dash: true, width: 2 }] : []),
+      ],
       markers: [
         { week: r.os.paybackWeek, label: 'OutSystems payback ' + months(r.os.paybackMonths, r.os.paybackWeek), color: 'var(--os)', row: 0,
           tip: 'Cumulative value minus cost turns positive here and stays positive.' },
@@ -2213,7 +2214,6 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       label: 'Cumulative net benefit'
     });
   }
-  /* The lowest point of a cumulative line: the peak cash outlay (the tile of the same name). */
   function lowPoint(cum, name, color, row) {
     var lo = 0, wk = -1; cum.forEach(function (v, i) { if (v < lo) { lo = v; wk = i + 1; } });
     return wk < 0 ? null : { week: wk, value: lo, color: color, row: row, label: tt('{name} peak outlay {amt}', { name: name, amt: C.moneyShort(-lo) }),

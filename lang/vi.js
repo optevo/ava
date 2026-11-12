@@ -1554,8 +1554,6 @@ AVAI18n.register("vi", {
   "OutSystems {c} a year": "OutSystems {c} một năm",
   "OutSystems {os}; the alternative {alt}.": "OutSystems {os}; phương án thay thế {alt}.",
   "OutSystems' cumulative cost does not stay below the alternative's within the horizon.": "Chi phí lũy kế của OutSystems không luôn thấp hơn của phương án thay thế trong kỳ phân tích.",
-  "OutSystems, initial + roadmap": "OutSystems, ban đầu + lộ trình",
-  "OutSystems, initial applications": "OutSystems, ứng dụng ban đầu",
   "OutSystems, {c} a year": "OutSystems, {c} một năm",
   "OutSystems: additional tooling per year": "OutSystems: công cụ bổ sung mỗi năm",
   "OutSystems: break/fix (% of build cost a year)": "OutSystems: sửa lỗi (% chi phí xây dựng mỗi năm)",

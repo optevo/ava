@@ -1554,8 +1554,6 @@ AVAI18n.register("ja", {
   "OutSystems {c} a year": "OutSystems {c} 年あたり",
   "OutSystems {os}; the alternative {alt}.": "OutSystems {os}、代替案 {alt}。",
   "OutSystems' cumulative cost does not stay below the alternative's within the horizon.": "対象期間内に、OutSystems の累積コストが代替案を下回り続けることはありません。",
-  "OutSystems, initial + roadmap": "OutSystems、初期＋ロードマップ",
-  "OutSystems, initial applications": "OutSystems、初期アプリケーション",
   "OutSystems, {c} a year": "OutSystems、{c} 年あたり",
   "OutSystems: additional tooling per year": "OutSystems: 年間追加ツール費",
   "OutSystems: break/fix (% of build cost a year)": "OutSystems: 障害対応 (年間構築コストの %)",

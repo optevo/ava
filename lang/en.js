@@ -1555,8 +1555,6 @@ AVAI18n.setCatalogue([
   {"k": "OutSystems {c} a year", "a": "Labels"},
   {"k": "OutSystems {os}; the alternative {alt}.", "a": "Labels"},
   {"k": "OutSystems' cumulative cost does not stay below the alternative's within the horizon.", "a": "Labels"},
-  {"k": "OutSystems, initial + roadmap", "a": "Labels"},
-  {"k": "OutSystems, initial applications", "a": "Labels"},
   {"k": "OutSystems, {c} a year", "a": "Labels"},
   {"k": "OutSystems: additional tooling per year", "a": "Labels"},
   {"k": "OutSystems: break/fix (% of build cost a year)", "a": "Labels"},

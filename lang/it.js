@@ -1554,8 +1554,6 @@ AVAI18n.register("it", {
   "OutSystems {c} a year": "OutSystems {c} all'anno",
   "OutSystems {os}; the alternative {alt}.": "OutSystems {os}; l'alternativa {alt}.",
   "OutSystems' cumulative cost does not stay below the alternative's within the horizon.": "Il costo cumulato di OutSystems non resta inferiore a quello dell'alternativa entro l'orizzonte.",
-  "OutSystems, initial + roadmap": "OutSystems, iniziali + roadmap",
-  "OutSystems, initial applications": "OutSystems, applicazioni iniziali",
   "OutSystems, {c} a year": "OutSystems, {c} all'anno",
   "OutSystems: additional tooling per year": "OutSystems: strumenti aggiuntivi all'anno",
   "OutSystems: break/fix (% of build cost a year)": "OutSystems: correzioni (% del costo di sviluppo all'anno)",

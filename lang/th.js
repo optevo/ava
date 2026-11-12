@@ -1554,8 +1554,6 @@ AVAI18n.register("th", {
   "OutSystems {c} a year": "OutSystems {c} ต่อปี",
   "OutSystems {os}; the alternative {alt}.": "OutSystems {os} ทางเลือกอื่น {alt}",
   "OutSystems' cumulative cost does not stay below the alternative's within the horizon.": "ต้นทุนสะสมของ OutSystems ไม่ต่ำกว่าของทางเลือกอื่นอย่างต่อเนื่องภายในช่วงเวลาที่วิเคราะห์",
-  "OutSystems, initial + roadmap": "OutSystems, เริ่มต้น + โรดแมป",
-  "OutSystems, initial applications": "OutSystems, แอปพลิเคชันเริ่มต้น",
   "OutSystems, {c} a year": "OutSystems {c} ต่อปี",
   "OutSystems: additional tooling per year": "OutSystems: เครื่องมือเพิ่มเติมต่อปี",
   "OutSystems: break/fix (% of build cost a year)": "OutSystems: แก้ไขข้อขัดข้อง (% ของต้นทุนการสร้างต่อปี)",

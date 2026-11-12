@@ -1554,8 +1554,6 @@ AVAI18n.register("ko", {
   "OutSystems {c} a year": "OutSystems 연간 {c}",
   "OutSystems {os}; the alternative {alt}.": "OutSystems {os}, 대안 {alt}.",
   "OutSystems' cumulative cost does not stay below the alternative's within the horizon.": "분석 기간 내에 OutSystems의 누적 비용이 대안보다 계속 낮게 유지되지는 않습니다.",
-  "OutSystems, initial + roadmap": "OutSystems, 초기 + 로드맵",
-  "OutSystems, initial applications": "OutSystems, 초기 애플리케이션",
   "OutSystems, {c} a year": "OutSystems, 연간 {c}",
   "OutSystems: additional tooling per year": "OutSystems: 연간 추가 도구 비용",
   "OutSystems: break/fix (% of build cost a year)": "OutSystems: 장애 대응 (연간 구축 비용의 %)",
