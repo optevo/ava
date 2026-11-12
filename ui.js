@@ -317,10 +317,11 @@
     var ro = function (id, what) { return '<div class="ro locked" id="' + id + '" data-go="applications"' + C.tip(tt('Added up from the applications'), tt(what) + ' ' + tt('Click to edit the applications.')) + '></div>'; };
     var head = '';
     if (road) {
-      head = '<label class="chk"' + C.tip(tt('Include the roadmap'), tt('The later applications, built after the initial ones by their own delivery team and needing an extra licence. With them, OutSystems with the initial applications is compared with OutSystems plus the roadmap.')) + '><input type="checkbox" data-rmblock="1"' + (b.on ? ' checked' : '') + '> ' + tt('Include the roadmap') + '</label>';
-      if (!b.on) return head + '<div class="note">' + tt('Switch this on to compare the initial applications with the initial applications plus a roadmap.') + '</div>';
+      head = '<label class="chk"' + C.tip(tt('Include roadmap'), tt('The later applications, built after the initial ones by their own delivery team and needing an extra licence. With them, OutSystems with the initial applications is compared with OutSystems plus the roadmap.')) + '><input type="checkbox" data-rmblock="1"' + (b.on ? ' checked' : '') + '> ' + tt('Include roadmap') + '</label>';
+      if (!b.idx.length) return head + '<div class="note">' + tt('Switch this on to compare the initial applications with the initial applications plus a roadmap.') + '</div>';
     }
-    var h = head;
+    var h = '';
+    if (!road) h += row('Platform deployment', hostingSelect(), 'PaaS: OutSystems provisions and runs the cloud, so there is no extra infrastructure or operating people, and no setup. Self-managed: the organisation runs it on its own cloud, so it pays for infrastructure and some operating people, but setup is prescriptive and cheap and maintenance is simpler than a cloud-native build.');
     h += row((road ? 'Extra licence per year' : 'Licence per year') + ' <i>' + esc(cur) + '</i>', inp(road ? 'roadmap.licence.os' : 'platform.os', 5000, 0),
       road ? 'The extra yearly OutSystems platform licence the roadmap needs, on top of the licence for the initial applications. It is charged from when the first roadmap application starts.' : 'The yearly OutSystems platform licence. It is the same whether OutSystems hosts it (PaaS) or the organisation does (self-managed).', road ? 'roadmap.licence.os' : 'platform.os');
     if (road) {
@@ -328,7 +329,7 @@
       h += '<label class="chk"' + C.tip(tt('High assurance (Sentry)'), tt('Tick if the roadmap needs the Sentry security and compliance add-on, for an extra yearly licence.')) + '><input type="checkbox" data-rmsentry="1"' + (rs ? ' checked' : '') + '> ' + tt('High assurance (Sentry)') + '</label>';
       if (rs) h += row('Extra Sentry licence per year <i>' + esc(cur) + '</i>', inp('roadmap.licence.sentry', 1000, 0), 'The extra yearly Sentry licence the roadmap needs.', 'roadmap.licence.sentry');
     } else {
-      h += assureCheck();
+      h += assureCheck() + '<div class="note" id="assure-note" style="margin:2px 0 6px"></div>';
       if (E.assuranceOn(state) && E.hostingOf(state) !== 'self') h += row('Sentry licence per year <i>' + esc(cur) + '</i>', inp('platform.sentry', 1000, 0), 'The extra yearly licence for the Sentry security and compliance add-on, on top of the platform licence. Sentry is available on PaaS only.', 'platform.sentry');
     }
     var dev = b.one && b.g.mode === 'quote';
@@ -346,8 +347,9 @@
       else if (app && !calc) h += row(d[1], '<button type="button" class="b" data-act="sv-add" data-i="' + b.first + '" data-k="' + d[0] + '">' + tt('Add') + '</button>', tips[d[0]]);
       else h += row(d[1], ro('blk-val-' + phase + '-' + d[0], tips[d[0]]));
     });
-    return h + '<div class="note" style="margin-top:6px">' + tt('All amounts are per annum, in {cur}.', { cur: esc(state.currency) }) + '</div>' +
-      more('applications', 'Set each application and delivery team separately, or build the value from detailed calculators (Applications tab).');
+    h += '<div class="note" style="margin-top:6px">' + tt('All amounts are per annum, in {cur}.', { cur: esc(state.currency) }) + '</div>' +
+      more('applications', 'Set each application and delivery team separately, or build the value from detailed calculators (Applications tab).') + (road ? '' : more('infrastructure', 'Line-by-line comparison of tooling, infrastructure and operating people for each approach, the OutSystems hosting options, and setup costs (Platform and infrastructure tab).'));
+    return head + (road && !b.on ? '<fieldset class="rmoff" disabled>' + h + '</fieldset>' : h);   // the roadmap's figures stay in view when it is left out, but cannot be edited
   }
   /* The roll-ups in the two blocks, and their headings: what each set costs to build, how long it takes and what it is worth a year. */
   function syncBlocks() {
@@ -355,8 +357,9 @@
     ['initial', 'roadmap'].forEach(function (ph) {
       var b = blockOf(ph), road = ph === 'roadmap', cost = 0, months = 0, v = { cost: 0, rev: 0, risk: 0 }, k = 0;
       list.forEach(function (p, i) {
-        if (p.include === false) return;
-        var mine = (p.phase === 'roadmap') === road, pr = full && full.os && full.os.projects ? full.os.projects[k] : null; k++;
+        var mine = (p.phase === 'roadmap') === road;
+        if (p.include === false && !(mine && !b.on)) return;   // a roadmap that is switched off still shows its figures
+        var pr = p.include === false ? null : (full && full.os && full.os.projects ? full.os.projects[k] : null); if (p.include !== false) k++;
         if (!mine) return;
         months += num0(p.months); if (pr) cost += pr.teamCost || 0;
         var t = E.buildValue(p); v.cost += t.cost; v.rev += t.rev; v.risk += t.risk;
@@ -406,28 +409,6 @@
       '<input type="text" data-text="altName" value="' + esc(state.altName) + '"></div>' +
       more('rates', 'The hourly cost of each role in the country\'s own currency, viewable and changeable (Rates tab).'));
     var money = ' ' + tt('Amounts are per annum, in {cur}, the currency chosen above.', { cur: cur });
-    var hOrg = fold('org', 'Your organisation', 'fs-org',
-      row('Employees', '<input type="number" data-path="org.employees" data-scope="state" step="1000" min="0" value="' + (num0(state.org && state.org.employees) || '') + '" placeholder="' + esc(tt('Optional')) + '">', 'Total employees. Optional. Used only to set sensible starting figures when you add a calculator or choose an application type, for example how many people use a workflow application. It never changes a figure you have already set.') +
-      row('Customers', '<input type="number" data-path="org.customers" data-scope="state" step="1000" min="0" value="' + (num0(state.org && state.org.customers) || '') + '" placeholder="' + esc(tt('Optional')) + '">', 'Total customers (or citizens, patients, members or students, whoever the organisation serves). Optional. Used only to set sensible starting volumes, such as requests or sign-ups per year, when you add a calculator or choose an application type.') +
-      row('Industry', '<select data-orgind="1"' + C.tip(tt('Industry'), tt(INDUSTRY_TIP)) + '><option value="">' + esc(tt('Not set')) + '</option>' + E.INDUSTRIES.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (state.org && state.org.industry === x[0] ? ' selected' : '') + '>' + esc(tt(x[0])) + '</option>'; }).join('') +
-        '<option value="_other"' + (state.org && state.org.industry === '_other' ? ' selected' : '') + '>' + esc(tt('Other (not listed)')) + '</option></select>' +
-        (state.org && state.org.industry === '_other' ? ' <input type="text" data-tpath="org.industryOther" value="' + esc((state.org && state.org.industryOther) || '') + '" placeholder="' + esc(tt('Name the industry')) + '">' : ''), INDUSTRY_TIP) +
-      (state.org && state.org.industry ? '<div class="note">' + (state.org.industry === '_other' ? tt('Not in the list, so the general starting figures are used. The name is saved with the assessment.')
-        : tt('Adjusts the starting customers and role mix, and brings the matching application types forward. Edit the multipliers on the Defaults tab.')) + '</div>' : '') +
-      '<div class="note">' + (state.org && state.org.auto === false
-        ? tt('Your own figures.') + ' <a class="more" data-act="org-auto">' + tt('Use the typical organisation for {country}', { country: esc(tt(R.byId(state.country).name)) }) + '</a>'
-        : tt('Starts from a typical large organisation in {country}: placeholders to replace with the customer\'s own figures.', { country: esc(tt(R.byId(state.country).name)) })) + '</div>', false);
-    var altN = esc(altShort());
-    function pr(label, id, os, alt, tip) { return '<div class="pair"><span' + (tip ? C.tip(tt(label), tt(tip)) : '') + '>' + label + '</span><div class="ro" id="kp-' + id + '-alt">' + alt + '</div><div class="ro" id="kp-' + id + '-os">' + os + '</div></div>'; }
-    var hHost = fold('platform', 'Platform', 'fs-plat',
-      row('OutSystems hosting', hostingSelect(),
-        'PaaS: OutSystems provisions and runs the cloud, so there is no extra infrastructure or operating people, and no setup. Self-managed: the organisation runs it on its own cloud, so it pays for infrastructure and some operating people, but setup is prescriptive and cheap and maintenance is simpler than a cloud-native build. High assurance (Sentry on PaaS) is set for each part below.') +
-      '<div class="note" id="assure-note" style="margin:2px 0 6px"></div>' +
-      '<div class="pair head"><span></span><b>' + altN + '</b><b class="os">OutSystems</b></div>' +
-      pr('Licences', 'lic', '', '', tt('The yearly platform licence: OutSystems only. The alternative has none; its tools are under Tooling and services.')) + pr('Tooling and services', 'tool', '', '', tt('The yearly tools and services each approach needs besides the platform licence: for the alternative, the tools it uses on top of the cloud; for OutSystems, the part of them it still needs.')) +
-      '<div class="sub" style="margin-top:8px"' + C.tip('Setup costs', 'One-off costs to get started: for the alternative, hiring and onboarding a cloud team and building the infrastructure environment; for OutSystems, onboarding and training. Absorbed (the default) leaves them out so the comparison focuses on ongoing costs. Included counts them in the total over the period.') + '>' + tt('Setup costs') + '</div>' +
-      setupIncLabel(state.setup.mode === 'included') +
-      more('infrastructure', 'Line-by-line comparison of tooling, infrastructure and operating people for each approach, the OutSystems hosting options, and setup costs (Platform and infrastructure tab).'), true);
     var hInit = fold('init', 'Initial application(s)', 'fs-init', blockHtml('initial'), true);
     var hRoad = fold('road', 'Roadmap', 'fs-road', blockHtml('roadmap'), true);
     var hNote = '<div class="note">Illustrative placeholder values. Every setting behind these figures is on the tabs above.</div>';
@@ -439,9 +420,11 @@
       row('Assessment start date', '<input type="date" data-text="startDate" value="' + esc(state.startDate || '') + '">', 'Optional. The first day of the project. With it, delivery teams can start on fixed dates and the timeline shows calendar dates; without it everything is shown as time from the start.') +
       row('Licence start date', '<input type="date" data-text="licenceStart" value="' + esc(state.licenceStart || '') + '"' + (state.startDate ? '' : ' disabled') + '>', 'Optional. When the platform licences start being charged, if that is not the project start. Left blank, they start with the project. Needs the assessment start date.') +
       '<div class="row"><label' + C.tip('Hard savings only', tt('Leaves out soft benefits (risk reduction and revenue uplift) and keeps cost savings, cost differences and anything else that can be verified. A more cautious view.')) + ' style="cursor:help">' + tt('Hard savings only') + '</label><input type="checkbox" id="hardOnly2"' + (state.hardOnly ? ' checked' : '') + '></div>' +
-      more('assumptions', 'Set the percentages behind each scenario (Analysis settings tab).'), true);
-    /* The organisation, how OutSystems is hosted, then the initial applications and the roadmap, each with its licence, development cost, time and value; the settings that frame the analysis last. */
-    h += hOrg + hHost + hInit + hRoad + hAna + hNote;
+      '<div class="sub" style="margin-top:8px"' + C.tip('Setup costs', 'One-off costs to get started: for the alternative, hiring and onboarding a cloud team and building the infrastructure environment; for OutSystems, onboarding and training. Absorbed (the default) leaves them out so the comparison focuses on ongoing costs. Included counts them in the total over the period.') + '>' + tt('Setup costs') + '</div>' +
+      setupIncLabel(state.setup.mode === 'included') +
+      more('assumptions', 'Set the percentages behind each scenario (Analysis settings tab).'), false);
+    /* Context, then the initial applications and the roadmap, each with its licence, development cost, time and value; the settings that frame the analysis last (closed). */
+    h += hInit + hRoad + hAna + hNote;
     $('keypanel').innerHTML = h;
   }
 
@@ -1649,13 +1632,20 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       return '<div class="dgroup' + (open ? '' : ' closed') + '" data-g="' + esc(g.id) + '">' + groupHeader(g, gi, groups.length, open) +
         '<div class="dgbody"><div class="appwrap">' + head + inGroup + '</div><p><button class="b" data-act="add" data-g="' + esc(g.id) + '">' + tt('Add application') + '</button>' + (list.length > 1 ? ' <a class="more" data-appfoldall="open">' + tt('Expand all') + '</a> · <a class="more" data-appfoldall="close">' + tt('Collapse all') + '</a>' : '') + '</p></div></div>';
     }).join('');
+    var og = state.org || {}, orgCard = '<div class="card orgcard" style="grid-column:1/-1"><div class="orgrow"><b class="orgt">' + tt('Your organisation') + '</b>' +
+      '<label class="gl"' + C.tip(tt('Employees'), tt('Total employees. Optional. Used only to set sensible starting figures when you add a calculator or choose an application type, for example how many people use a workflow application. It never changes a figure you have already set.')) + '>' + tt('Employees') + ' <input type="number" data-path="org.employees" data-scope="state" step="1000" min="0" value="' + (num0(og.employees) || '') + '" placeholder="' + esc(tt('Optional')) + '"></label>' +
+      '<label class="gl"' + C.tip(tt('Customers'), tt('Total customers (or citizens, patients, members or students, whoever the organisation serves). Optional. Used only to set sensible starting volumes, such as requests or sign-ups per year, when you add a calculator or choose an application type.')) + '>' + tt('Customers') + ' <input type="number" data-path="org.customers" data-scope="state" step="1000" min="0" value="' + (num0(og.customers) || '') + '" placeholder="' + esc(tt('Optional')) + '"></label>' +
+      '<label class="gl"' + C.tip(tt('Industry'), tt(INDUSTRY_TIP)) + '>' + tt('Industry') + ' <select data-orgind="1"><option value="">' + esc(tt('Not set')) + '</option>' + E.INDUSTRIES.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (og.industry === x[0] ? ' selected' : '') + '>' + esc(tt(x[0])) + '</option>'; }).join('') + '<option value="_other"' + (og.industry === '_other' ? ' selected' : '') + '>' + esc(tt('Other (not listed)')) + '</option></select>' +
+      (og.industry === '_other' ? ' <input type="text" data-tpath="org.industryOther" value="' + esc(og.industryOther || '') + '" placeholder="' + esc(tt('Name the industry')) + '">' : '') + '</label></div>' +
+      (og.industry ? '<div class="note">' + (og.industry === '_other' ? tt('Not in the list, so the general starting figures are used. The name is saved with the assessment.') : tt('Adjusts the starting customers and role mix, and brings the matching application types forward. Edit the multipliers on the Defaults tab.')) + '</div>' : '') +
+      '<div class="note">' + (og.auto === false ? tt('Your own figures.') + ' <a class="more" data-act="org-auto">' + tt('Use the typical organisation for {country}', { country: esc(tt(R.byId(state.country).name)) }) + '</a>' : tt('Starts from a typical large organisation in {country}: placeholders to replace with the customer\'s own figures.', { country: esc(tt(R.byId(state.country).name)) })) + '</div></div>';
     var rmBar = '<div class="rmbar"><div class="rmpanel"><div class="note" style="margin:0 0 6px">' + tt('Each application is Initial or Roadmap. OutSystems with the initial applications is compared with OutSystems plus the roadmap, each against the alternative building the same applications. The roadmap needs an extra licence, set here.') + '</div>' +
       row('Extra licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.os', 5000, 0), 'The extra yearly OutSystems platform licence the roadmap needs, on top of the licence for the initial applications.', 'roadmap.licence.os') +
       row('Extra Sentry licence for the roadmap <i>' + esc(curSym()) + '</i>', inp('roadmap.licence.sentry', 5000, 0), 'The extra yearly Sentry licence the roadmap needs, if any.', 'roadmap.licence.sentry') +
       '<div class="note">' + tt('The extra licence is charged each year from when the first roadmap application starts. Roadmap applications are built after the initial ones within each team. Hosting, operating people and the alternative\'s tooling stay the same unless you change them.') + '</div>' +
       (E.roadmapOn(state) ? '<div class="note" id="rmsum"></div>' : '<div class="note" style="color:var(--warn)">' + tt('To compare, keep at least one included application as Initial and at least one as Roadmap.') + '</div>') + '</div></div>';
     $('cfg-applications').innerHTML = page('Applications', tt('The portfolio starts as one application that stands for all of them, with its value as simple calculators for cost savings, revenue uplift and risk reduction. Add detailed calculators, or more applications, when you want more precision; nothing already entered is thrown away. Applications are delivered one after another by one team.'),
-      '<div class="card" style="grid-column:1/-1"><div class="note" style="margin:0 0 8px">' +
+      orgCard + '<div class="card" style="grid-column:1/-1"><div class="note" style="margin:0 0 8px">' +
       tt('A delivery team is whoever delivers some of the applications (an internal team, a partner or a supplier), with its own cost level. Developer based: the developers and roles are costed at the reference rates times the rate level (a partner might be 140%, an internal team 85%). Given cost: you enter what its applications will cost and the rate level follows from it. Applications are still delivered one after another.') + '</div>' +
       rmBar + blocks + '<div class="note" id="projsum"></div><p><button class="b" data-act="gadd">' + tt('Add delivery team') + '</button></p></div>');
     updateProjectSummary(); syncBuild(); updateRateNote();
