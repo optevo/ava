@@ -2501,6 +2501,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   function niceStep(x) { var e = Math.pow(10, Math.floor(Math.log(x) / Math.LN10)), f = x / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; }
   function svgRmBuild() {
     var pts = E.buildUp(baseState || state) || [], alt = altShort(), MS = C.moneyShort, M = C.money;
+    if (viewScenario() === 'today') pts = pts.filter(function (p) { return p.phase !== 'roadmap'; });   // the initial view stops before the roadmap
     if (!pts.length) return '';
     var w = 700, rowH = 34, m = { l: 220, r: 70, t: 36, b: 14 }, pw = w - m.l - m.r, lo = 0, hi = 0, b = '';
     pts.forEach(function (p) { lo = Math.min(lo, p.advantage); hi = Math.max(hi, p.advantage); });
