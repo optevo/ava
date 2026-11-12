@@ -2525,6 +2525,11 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   /* OutSystems today to OutSystems with the roadmap, as a bridge. */
   function svgRmAdds() {
     var T0 = rmRuns.today, F0 = rmRuns.roadmap, AD = rmRuns.adds, yrs = state.horizon;
+    if (viewScenario() === 'today') {   // the initial view has nothing added yet: say so, and where to look
+      return '<svg viewBox="0 0 700 120" style="width:100%;height:auto;display:block" role="img" aria-label="' + C.esc(tt('What the roadmap adds')) + '" font-family="Arial, Helvetica, sans-serif">' +
+        '<text x="350" y="48" font-size="13" text-anchor="middle" style="fill:var(--text)">' + C.esc(tt('Initial applications only: OutSystems is worth {npv} in present value.', { npv: C.moneyShort(T0.os.npv) })) + '</text>' +
+        '<text x="350" y="78" font-size="12" text-anchor="middle" style="fill:var(--muted)">' + C.esc(tt('Switch to Initial + roadmap to see what the roadmap adds.')) + '</text></svg>';
+    }
     return C.waterfall({
       start: { label: 'Initial applications', value: T0.os.npv, tip: tt('Present value of everything OutSystems delivers for the initial applications minus everything it costs over {n} years.', { n: yrs }) },
       end: { label: 'Initial + roadmap', value: F0.os.npv, tip: tt('The same measure with the roadmap built as well. The difference from the left-hand bar is what the roadmap adds.') },
