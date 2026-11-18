@@ -3596,26 +3596,160 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       return { grp: tr.classList.contains('grp'), tot: tr.classList.contains('tot'), head: !!tr.querySelector('th'), cells: Array.prototype.map.call(tr.children, function (c) { return { t: c.textContent.trim(), span: parseInt(c.getAttribute('colspan') || '1', 10) }; }) };
     });
   }
+  /* ---- deck pages: the three cases, the figures behind the cost chart, the running cost of a year, and the applications with how each benefit is worked out ---- */
+  var nf = function (x) { return String(Math.round(num0(x) * 10) / 10).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+  function lineName(type) {
+    switch (type) {
+      case 'decom': return tt('Legacy system retired');
+      case 'labour': return tt('People: time saved');
+      case 'revenue': return tt('Revenue uplift');
+      case 'risk': return tt('Risk reduction');
+      case 'other': return tt('Other benefit');
+      default: return tt('Value');
+    }
+  }
+  /* One benefit line in words: what it is, the sum behind it with its numbers, the reason given, and the value a year. */
+  function lineWords(l) {
+    var M = C.money, pc = function (x) { return nf(x) + '%'; }, hr = M(num0(l.salary) * num0(l.mult) / E.LINE_HOURS), cap = l.how !== 'cash', f;
+    switch (l.type) {
+      case 'handling':
+        f = cap ? tt('{volume} a year × {mins} minutes saved ÷ 60 × {rate} an hour × {share} counted as freed capacity', { volume: nf(l.volume), mins: nf(l.mins), rate: hr, share: pc(l.realise) })
+          : tt('{volume} a year × {mins} minutes saved ÷ 60 × {rate} an hour', { volume: nf(l.volume), mins: nf(l.mins), rate: hr }); break;
+      case 'deflect': f = tt('{volume} a year × {share} answered by self-service × {per} each', { volume: nf(l.volume), share: pc(l.share), per: M(l.per) }); break;
+      case 'completion': f = tt('{units} started a year × {lift} points more finishing ({from} to {to}) × {per} each × {margin} margin', { units: nf(l.units), lift: nf(num0(l.to) - num0(l.from)), from: pc(l.from), to: pc(l.to), per: M(l.per), margin: pc(l.margin) }); break;
+      case 'errors': f = tt('{volume} a year × {drop} points fewer errors ({from} to {to}) × {per} each', { volume: nf(l.volume), drop: nf(num0(l.from) - num0(l.to)), from: pc(l.from), to: pc(l.to), per: M(l.per) }); break;
+      case 'cycle': f = tt('{volume} a year × {days} days sooner × {per} a day × {share} counted', { volume: nf(l.volume), days: nf(l.days), per: M(l.per), share: pc(l.realise) }); break;
+      case 'events': f = tt('{volume} a year × {share} fewer × {per} each', { volume: nf(l.volume), share: pc(l.reduction), per: M(l.per) }); break;
+      case 'labour':
+        f = cap ? tt('{users} people × {salary} a year × {mult} loaded × {saved} time saved × {adopt} using it × {share} counted as freed capacity', { users: nf(l.users), salary: M(l.salary), mult: nf(l.mult), saved: pc(l.saved), adopt: pc(l.adopt), share: pc(l.realise) })
+          : tt('{users} people × {salary} a year × {mult} loaded × {saved} time saved × {adopt} using it', { users: nf(l.users), salary: M(l.salary), mult: nf(l.mult), saved: pc(l.saved), adopt: pc(l.adopt) }); break;
+      case 'decom': f = tt('{total} a year of subscriptions, hosting and effort × {share} retired', { total: M(num0(l.lic) + num0(l.infra) + num0(l.support) + num0(l.fte) * num0(l.fteCost)), share: pc(l.retired) }); break;
+      case 'revenue': f = tt('{units} × {per} × {share} uplift × {margin} margin', { units: nf(l.units), per: M(l.per), share: pc(l.uplift), margin: pc(l.margin) }); break;
+      case 'risk': f = tt('{exposure} at risk × {share} reduction', { exposure: M(l.exposure), share: pc(l.reduction) }); break;
+      default: f = tt('A figure entered directly: {amt} a year', { amt: M(l.amount) });
+    }
+    var v = E.lineValue(l);
+    return { what: l.what || lineName(l.type), formula: f, note: l.note || '', per: v.cost + v.rev + v.risk };
+  }
+  /* Each case run on its own, for the pages that show conservative, likely and optimistic side by side. */
+  function caseRuns() {
+    var CS = E.casesOf(state);
+    return Object.keys(CS).map(function (k) { var st = JSON.parse(JSON.stringify(state)); st.realise = { advantage: CS[k].advantage, value: CS[k].value }; return { key: k, label: CS[k].label, r: E.run(st) }; });
+  }
+  function deckCasesSlide(f1t, f2t, C0, yrs) {
+    var cr = caseRuns(), M = C.moneyShort, hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'r', size: 11 }; };
+    var mo = function (v) { return v === null ? tt('beyond horizon') : tt('{n} months', { n: f1(v) }); };
+    var grp = function (t) { return [{ t: t, bold: true, span: 4, align: 'l', size: 11 }]; };
+    var row = function (label, fn) { return [{ t: label, align: 'l', size: 11, color: C0.muted }].concat(cr.map(function (c) { return { t: fn(c.r), align: 'r', size: 11 }; })); };
+    var alt = altLabel(), rows = [[hd('', 'l')].concat(cr.map(function (c) { return hd(tt(c.label)); }))];
+    rows.push(grp(tt('Net present value advantage'))); rows.push(row(tt('OutSystems ahead by'), function (r) { return M(r.advantage); }));
+    rows.push(grp(tt('Return on investment'))); rows.push(row('OutSystems', function (r) { return pct(r.os.roi); })); rows.push(row(alt, function (r) { return pct(r.alt.roi); }));
+    rows.push(grp(tt('Payback'))); rows.push(row('OutSystems', function (r) { return mo(r.os.paybackMonths); })); rows.push(row(alt, function (r) { return mo(r.alt.paybackMonths); }));
+    rows.push(grp(tt('Benefits over {yrs}', { yrs: yrs }))); rows.push(row('OutSystems', function (r) { return M(r.os.totalValue); })); rows.push(row(alt, function (r) { return M(r.alt.totalValue); }));
+    rows.push(grp(tt('Time to production'))); rows.push(row('OutSystems', function (r) { return tt('{n} weeks', { n: f1(r.os.T.total) }); })); rows.push(row(alt, function (r) { return tt('{n} weeks', { n: f1(r.alt.T.total) }); }));
+    return { layout: 'content', title: tt('Conservative, likely and optimistic'), footer1: f1t, footer2: f2t, items: [
+      { t: 'table', x: 0.56, y: 1.5, colW: [3.81, 2.8, 2.8, 2.8], rowH: 0.27, size: 11, rows: rows },
+      { t: 'text', x: 0.56, y: 6.0, w: 12.21, h: 0.6, inset: 0, paras: [{ t: caseWords() + ' ' + tt('The three cases change how much of the benefit arrives; the costs stay the same.'), size: 10, color: C0.muted }] }] };
+  }
+  /* The figures behind the costs and benefits chart: every line for both approaches and the difference. */
+  function deckFiguresSlide(f1t, f2t, C0, yrs) {
+    var r = res, M = C.money, hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'r', size: 10 }; };
+    var g = function (t) { return [{ t: t, bold: true, fill: C0.panel, span: 4, align: 'l', size: 10 }]; };
+    var line = function (label, a, o, bold) { return [{ t: label, align: 'l', size: 10, bold: bold }, { t: M(o), align: 'r', size: 10, bold: bold }, { t: M(a), align: 'r', size: 10, bold: bold }, { t: M(o - a), align: 'r', size: 10, bold: bold }]; };
+    var rows = [[hd('', 'l'), hd('OutSystems'), hd(altLabel()), hd(tt('Difference'))]];
+    rows.push(g(tt('Benefits over {yrs}', { yrs: yrs })));
+    E.DRIVERS.forEach(function (d) { if (r.os.sumVal[d.key] || r.alt.sumVal[d.key]) rows.push(line(tt(d.label), r.alt.sumVal[d.key], r.os.sumVal[d.key])); });
+    rows.push(line(tt('Total benefits'), r.alt.totalValue, r.os.totalValue, true));
+    rows.push(g(tt('Costs over {yrs}', { yrs: yrs })));
+    E.COST_CATS.forEach(function (c) { if (r.os.sumCost[c.key] || r.alt.sumCost[c.key]) rows.push(line(tt(c.label), r.alt.sumCost[c.key] || 0, r.os.sumCost[c.key] || 0)); });
+    rows.push(line(tt('Total costs'), r.alt.totalCost, r.os.totalCost, true));
+    rows.push(line(tt('Net benefit'), r.alt.totalValue - r.alt.totalCost, r.os.totalValue - r.os.totalCost, true));
+    return { layout: 'content', title: tt('What it costs and earns: the figures'), footer1: f1t, footer2: f2t, items: [
+      { t: 'table', x: 0.56, y: 1.5, colW: [5.2, 2.3, 2.3, 2.41], rowH: 0.26, size: 10, rows: rows },
+      { t: 'text', x: 0.56, y: 6.2, w: 12.21, h: 0.4, inset: 0, paras: [{ t: tt('Difference is OutSystems minus the alternative: for costs, a negative figure is a saving.'), size: 10, color: C0.muted }] }] };
+  }
+  /* The running cost of a year once every application is live: looking after the applications, and running the platform. */
+  function deckOngoingSlide(f1t, f2t, C0, jobs) {
+    var was = [cbBasis, bauPart]; cbBasis = 'bau'; bauPart = 'all'; var svg; try { svg = svgBau(); } finally { cbBasis = was[0]; bauPart = was[1]; }
+    var b = bauData(), M = C.money, hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'r', size: 9.5 }; };
+    var vb = /viewBox="0 0 ([0-9.]+) ([0-9.]+)"/.exec(svg), ar = parseFloat(vb[1]) / parseFloat(vb[2]), w = Math.min(7.0, 4.2 * ar), h = w / ar;
+    jobs.push({ name: 'ongoing', svg: svg });
+    var line = function (label, k, bold) { return [{ t: label, align: 'l', size: 9.5, bold: bold }, { t: M(b.os[k] || 0), align: 'r', size: 9.5, bold: bold }, { t: M(b.alt[k] || 0), align: 'r', size: 9.5, bold: bold }]; };
+    var g = function (t) { return [{ t: t, bold: true, fill: C0.panel, span: 3, align: 'l', size: 9.5 }]; };
+    var rows = [[hd('', 'l'), hd('OutSystems'), hd(altLabel())], g(tt('Looking after the applications')), line(tt('Break/fix'), 'fix'), line(tt('Enhancements'), 'enh'), line(tt('AI tokens'), 'tokens'), line(tt('Subtotal'), 'app', true), g(tt('Running the platform'))];
+    E.COST_CATS.forEach(function (c) { if (['platform', 'tooling', 'infra', 'ops', 'assure'].indexOf(c.key) >= 0 && (b.os[c.key] || b.alt[c.key])) rows.push(line(tt(c.label), c.key)); });
+    rows.push(line(tt('Subtotal'), 'nonApp', true)); rows.push(line(tt('Total a year'), 'total', true));
+    return { layout: 'content', title: tt('Ongoing cost per year once live'), footer1: f1t, footer2: f2t, items: [
+      { t: 'img', name: 'ongoing', x: 0.56, y: 1.55, w: w, h: h, alt: tt('Ongoing cost per year') },
+      { t: 'table', x: 7.75, y: 1.55, colW: [2.5, 1.26, 1.26], rowH: 0.26, size: 9.5, rows: rows },
+      { t: 'text', x: 0.56, y: 1.55 + h + 0.15, w: 6.9, h: 0.9, inset: 0, paras: [{ t: tt('A full year once every application is live, at the first year\'s prices. Looking after the applications is break/fix and the changes the business asks for; running the platform is the licence, tools, infrastructure, the people who operate it and security.'), size: 10, color: C0.muted }] }] };
+  }
+  /* The applications in scope, then each one with its benefit lines and the sum behind each. */
+  function tablePages(head, rows, colW, size, rowH, limit) {   // the rows split into pages of the table's measured height, each page with the header
+    var pages = [], cur = null;
+    rows.forEach(function (rw) {
+      if (!cur) { cur = [head]; pages.push(cur); }
+      if (cur.length > 1 && DK.tableHeight({ colW: colW, rowH: rowH, size: size, rows: cur.concat([rw]) }) > limit) { cur = [head]; pages.push(cur); }
+      cur.push(rw);
+    });
+    return pages;
+  }
+  function deckAppSlides(f1t, f2t, C0) {
+    var out = [], r = res, list = E.ensureList(state).filter(function (p) { return p.include !== false; }), M = C.money;
+    var live = function (p) { var q = r.os.projects.filter(function (x) { return x.name === p.name; })[0]; return q ? q.goLive : null; };
+    var when = function (wk) { if (wk === null || wk === undefined) return ''; var d = E.dateAtWeek(state, wk); return d ? showMonth(d) : tt('Month {n}', { n: Math.max(1, Math.ceil(wk / (E.WPY / 12))) }); };
+    var tot = function (p) { var t = 0; (p.build || []).forEach(function (l) { var v = E.lineValue(l); t += v.cost + v.rev + v.risk; }); return t; };
+    var hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'l', size: 10 }; };
+    var sum = 0, body = [], head = [hd('#', 'r'), hd(tt('Application')), hd(tt('Live from')), hd(tt('Benefit per year'), 'r'), hd(tt('Benefit lines'), 'r')];
+    list.forEach(function (p, i) { var t = tot(p); sum += t; body.push([{ t: String(i + 1), align: 'r', size: 10, color: C0.muted }, { t: p.name, align: 'l', size: 10 }, { t: when(live(p)), align: 'l', size: 10 }, { t: M(t), align: 'r', size: 10 }, { t: String((p.build || []).length), align: 'r', size: 10 }]); });
+    body.push([{ t: '', align: 'r' }, { t: tt('All applications'), align: 'l', bold: true, size: 10 }, { t: '', align: 'l' }, { t: M(sum), align: 'r', bold: true, size: 10 }, { t: '', align: 'r' }]);
+    var ovCols = [0.5, 6.0, 2.0, 2.2, 1.51], ovPages = tablePages(head, body, ovCols, 10, 0.25, 4.45);
+    ovPages.forEach(function (rs, i) {
+      out.push({ layout: 'content', title: ovPages.length > 1 ? tt('The applications in scope ({n} of {total})', { n: i + 1, total: ovPages.length }) : tt('The applications in scope'), footer1: f1t, footer2: f2t, items: [{ t: 'table', x: 0.56, y: 1.5, colW: ovCols, rowH: 0.25, size: 10, rows: rs },
+        { t: 'text', x: 0.56, y: 6.3, w: 12.21, h: 0.4, inset: 0, paras: [{ t: tt('Benefit per year is the sum of each application\'s benefit lines once it is live, before the ramp-up. The next pages show how each line is worked out.'), size: 10, color: C0.muted }] }] });
+    });
+    // one table per page, filled with applications until the page is full
+    var LIMIT = 4.95, pages = [], cur = null;
+    var startPage = function () { cur = { rows: [[hd(tt('Benefit')), hd(tt('How it is calculated')), hd(tt('Why we think so')), hd(tt('Per year'), 'r')]] }; pages.push(cur); };
+    var heightOf = function (rs) { return DK.tableHeight({ colW: [2.55, 4.35, 3.9, 1.41], rowH: 0.26, size: 9.5, rows: rs }); };
+    list.forEach(function (p) {
+      var rs = [[{ t: p.name, bold: true, fill: C0.panel, span: 3, align: 'l', size: 10.5 }, { t: M(tot(p)), bold: true, fill: C0.panel, align: 'r', size: 10.5 }]];
+      if (p.desc) rs.push([{ t: p.desc, span: 4, align: 'l', size: 9, color: C0.muted }]);
+      (p.build || []).forEach(function (l) { var w = lineWords(l); rs.push([{ t: w.what, align: 'l', size: 9.5, bold: true }, { t: w.formula, align: 'l', size: 9.5 }, { t: w.note, align: 'l', size: 9, color: C0.muted }, { t: M(w.per), align: 'r', size: 9.5 }]); });
+      if (!cur) startPage();
+      if (cur.rows.length > 1 && heightOf(cur.rows.concat(rs)) > LIMIT) startPage();
+      cur.rows = cur.rows.concat(rs);
+    });
+    pages.forEach(function (pg, i) {
+      out.push({ layout: 'content', title: tt('How each benefit is worked out ({n} of {total})', { n: i + 1, total: pages.length }), footer1: f1t, footer2: f2t, items: [{ t: 'table', x: 0.56, y: 1.5, colW: [2.55, 4.35, 3.9, 1.41], rowH: 0.26, size: 9.5, rows: pg.rows }] });
+    });
+    return out;
+  }
   function deckSpec(charts) {
     var C0 = DK.COL, org = state.company && state.company.trim() ? state.company.trim() : '', alt = altLabel(), MS = C.moneyShort, M = C.money;
-    var f1t = (org ? org + '  ·  ' : tt('EXAMPLE NUMBERS') + '  ·  ') + 'AI Value Assessment', f2t = 'Illustrative figures: placeholders until validated', slides = [], images = {};
+    var f1t = (org ? org + '  ·  ' : tt('EXAMPLE NUMBERS') + '  ·  ') + 'AI Value Assessment', f2t = state.deckNote && state.deckNote.trim() ? state.deckNote.trim() : 'Illustrative figures: placeholders until validated', slides = [], images = {};
     var facts = summaryFacts(), tiles = facts.tiles, lede = facts.take;
     var caseKey = E.caseOf(state), caseName = caseKey ? E.casesOf(state)[caseKey].label : 'Custom', yrs = state.horizon === 1 ? tt('1 year') : tt('{n} years', { n: state.horizon });
     var cm = { conservative: C0.amber, likely: C0.os, optimistic: C0.cyan }, accent = cm[caseKey] || C0.alt;
     // 1 cover
     slides.push({ layout: 'cover', title: org ? tt('Value assessment') + '\n' + org : tt('AI Value Assessment'), titleSize: 40, subtitle: tt('AI Value Assessment') + '\n' + tt('OutSystems compared with {alt}', { alt: alt }) + '\n' + new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }), subtitleSize: 18 });
     // 2 summary
-    var tw = (12.21 - (tiles.length - 1) * 0.18) / tiles.length, items = [];
+    var perRow = tiles.length > 4 ? Math.ceil(tiles.length / 2) : Math.max(1, tiles.length), nRows = Math.ceil(tiles.length / perRow) || 1, tw = (12.21 - (perRow - 1) * 0.18) / perRow, items = [];
+    var tileParas = function (t) { return [{ t: t.k.toUpperCase(), size: nRows > 1 ? 9.5 : 10, color: C0.muted, after: 4 }, { t: t.v, size: nRows > 1 ? 24 : 28, bold: true, after: 3 }, { t: t.s, size: nRows > 1 ? 11 : 12, color: C0.muted }]; };
+    var th = Math.min(nRows > 1 ? 1.6 : 1.75, Math.max(1.1, Math.max.apply(null, tiles.map(function (t) { return DK.parasTextHeight(tileParas(t), tw - 0.24) + 0.26; }))));   // tiles are as tall as their text needs
     tiles.forEach(function (t, i) {
-      var x = 0.56 + i * (tw + 0.18);
-      items.push({ t: 'text', x: x, y: 1.6, w: tw, h: 0.07, fill: accent, inset: 0 });
-      items.push({ t: 'text', x: x, y: 1.67, w: tw, h: 1.75, fill: C0.panel, inset: 0.14, paras: [
-        { t: t.k.toUpperCase(), size: 10, color: C0.muted, after: 8 }, { t: t.v, size: 28, bold: true, after: 6 }, { t: t.s, size: 12, color: C0.muted }] });
+      var x = 0.56 + (i % perRow) * (tw + 0.18), y = 1.5 + Math.floor(i / perRow) * (th + 0.15);
+      items.push({ t: 'text', x: x, y: y, w: tw, h: 0.07, fill: accent, inset: 0 });
+      items.push({ t: 'text', x: x, y: y + 0.07, w: tw, h: th, fill: C0.panel, inset: 0.12, paras: tileParas(t) });
     });
-    items.push({ t: 'text', x: 0.56, y: 3.85, w: 12.21, h: 1.1, inset: 0, paras: [{ t: lede, size: 22 }] });
-    var meta = [tt('{case} scenario', { case: tt(caseName) }), tt('Analysis period {yrs}', { yrs: yrs }), tt('Hard savings only: {v}', { v: state.hardOnly ? tt('yes') : tt('no') })];
-    items.push({ t: 'text', x: 0.56, y: 4.9, w: 12.21, h: 0.9, inset: 0, paras: [{ t: meta.join('   ·   '), size: 12, color: C0.muted }] });
-    slides.push({ layout: 'content', title: tiles.length ? 'Summary' : 'Summary', items: items, footer1: f1t, footer2: f2t });
+    var yBelow = 1.5 + (nRows - 1) * (th + 0.15) + 0.07 + th + 0.08;
+    items.push({ t: 'text', x: 0.56, y: yBelow, w: 12.21, h: 0.8, inset: 0, paras: [{ t: lede, size: 16 }] });
+    var cr0 = caseRuns(), mo0 = function (v) { return v === null ? tt('beyond horizon') : tt('{n} months', { n: f1(v) }); }, ch0 = function (t, al, o) { return Object.assign({ t: t, bold: true, fill: C0.panel, align: al || 'r', size: 10 }, o || {}); };
+    var period = tt('Analysis period {yrs}', { yrs: yrs }) + (state.hardOnly ? '  ·  ' + tt('Hard savings only: {v}', { v: tt('yes') }) : '');
+    items.push({ t: 'table', x: 0.56, y: yBelow + 0.85, colW: [4.41, 2.6, 2.6, 2.6], rowH: 0.26, size: 10, rows: [[ch0(period, 'l', { bold: false, color: C0.muted })].concat(cr0.map(function (c) { return ch0(tt(c.label)); })),
+      [{ t: tt('Net present value advantage'), align: 'l', size: 10, color: C0.muted }].concat(cr0.map(function (c) { return { t: MS(c.r.advantage), align: 'r', size: 10, bold: true }; })),
+      [{ t: tt('OutSystems payback'), align: 'l', size: 10, color: C0.muted }].concat(cr0.map(function (c) { return { t: mo0(c.r.os.paybackMonths), align: 'r', size: 10 }; }))] });
+    slides.push({ layout: 'content', title: tt('The answer'), items: items, footer1: f1t, footer2: f2t });
     var bf = bothFacts();   // with a roadmap: the six figures for today and with the roadmap, side by side
     if (bf) {
       var cellOf = function (txt, o) { return Object.assign({ t: txt }, o); }, hdr = [cellOf('', { align: 'l' }), cellOf(tt('Initial applications'), { align: 'r', bold: true }), cellOf(tt('Initial + roadmap'), { align: 'r', bold: true })];
@@ -3624,22 +3758,23 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         { t: 'text', x: 0.56, y: 5.9, w: 12.21, h: 0.8, inset: 0, paras: [{ t: tt('The initial applications against the initial applications plus the roadmap, each compared with the alternative building the same applications. The roadmap needs an extra licence from when it starts.'), size: 11, color: C0.muted }] }] });
     }
     // chart slides
-    var jobs = [];
+    var jobs = [], chartSlides = [];
     charts.forEach(function (d, i) {
       var name = 'chart' + (i + 1), it = [], side = boxesOf((d.extra || '') + hostBox() + casesBox());
       var slide = { layout: 'content', title: d.title, items: it, footer1: f1t, footer2: f2t };
       if (d.id === 'financials') {
-        var rows = tableRowsOf(htmlFinancials()), ncol = rows[0].cells.length, cw = [3.2]; for (var q = 1; q < ncol; q++) cw.push((12.21 - 3.2) / (ncol - 1));
-        it.push({ t: 'table', x: 0.56, y: 1.55, colW: cw, rowH: 0.27, size: 9.5, rows: rows.map(function (r) {
+        var rows = tableRowsOf(htmlFinancials()), ncol = rows.length ? rows[0].cells.length : 0, cw = [3.2]; for (var q = 1; q < ncol; q++) cw.push((12.21 - 3.2) / (ncol - 1));
+        if (rows.length) it.push({ t: 'table', x: 0.56, y: 1.55, colW: cw, rowH: 0.27, size: 9.5, rows: rows.map(function (r) {
           var cells = r.cells.map(function (c, ci) { return { t: c.t, span: c.span > 1 ? c.span : 0, bold: r.grp || r.tot || r.head, fill: r.grp ? C0.panel : null, align: ci === 0 ? 'l' : 'r', size: 9.5 }; });
           return cells; }) });
         it.push({ t: 'text', x: 0.56, y: 6.05, w: 12.21, h: 0.5, inset: 0, paras: [{ t: d.take, size: 11, color: C0.muted }] });
       } else {
         var wide = d.wide, svg = d.deckSvg || d.svg;
         jobs.push({ name: name, svg: svg });
-        var vb = /viewBox="0 0 ([0-9.]+) ([0-9.]+)"/.exec(svg), ar = parseFloat(vb[1]) / parseFloat(vb[2]), maxW = wide ? 12.21 : 7.7, maxH = wide ? 4.0 : 4.15, w = Math.min(maxW, maxH * ar), h = w / ar;
-        it.push({ t: 'img', name: name, x: 0.56, y: 1.55, w: w, h: h, alt: d.title });
         var rd = d.read ? [{ runs: [{ t: tt('How to read this.') + '  ', bold: true }, { t: tt(d.read) }], size: 9.5, color: C0.muted }] : [];
+        var rdH = rd.length ? DK.parasTextHeight(rd, 7.7) + 0.1 : 0;   // the how-to-read text under the chart: the chart is sized to leave room for it
+        var vb = /viewBox="0 0 ([0-9.]+) ([0-9.]+)"/.exec(svg), ar = parseFloat(vb[1]) / parseFloat(vb[2]), maxW = wide ? 12.21 : 7.7, maxH = wide ? 4.0 : Math.min(3.95, 6.55 - 1.55 - 0.12 - rdH), w = Math.min(maxW, maxH * ar), h = w / ar;
+        it.push({ t: 'img', name: name, x: 0.56, y: 1.55, w: w, h: h, alt: d.title });
         if (wide) {
           it.push({ t: 'text', x: 0.56, y: 5.65, w: 12.21, h: 0.9, inset: 0, paras: [{ t: d.take, size: 13, bold: true, after: 4 }].concat(rd) });
         } else {
@@ -3650,19 +3785,31 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
             col.push({ t: '', size: 5 });
           });
           it.push({ t: 'text', x: 8.5, y: 1.55, w: 4.27, h: 4.95, inset: 0.05, paras: col });
-          if (rd.length) it.push({ t: 'text', x: 0.56, y: 1.55 + h + 0.15, w: w, h: 1.0, inset: 0, paras: rd });
+          if (rd.length) it.push({ t: 'text', x: 0.56, y: 1.55 + h + 0.12, w: 7.7, h: rdH, inset: 0, paras: rd });
         }
       }
-      slides.push(slide);
+      slide.id = d.id; chartSlides.push(slide);
     });
+    // the order of the story: the three cases, costs and earnings (chart, figures, ongoing), payback, advantage, timeline, financials, then how sure and time at each stage
+    var order = ['cost', 'payback', 'bridge', 'rmbuild', 'rmadds', 'timeline', 'financials', 'sure', 'stages'], rank = function (id) { var i = order.indexOf(id); return i < 0 ? 99 : i; };
+    chartSlides.forEach(function (sl, i) { sl.ix = i; }); chartSlides.sort(function (a, b) { return rank(a.id) - rank(b.id) || a.ix - b.ix; });
+    slides.push(deckCasesSlide(f1t, f2t, C0, yrs));
+    chartSlides.forEach(function (sl) {
+      slides.push(sl);
+      if (sl.id === 'cost') { slides.push(deckFiguresSlide(f1t, f2t, C0, yrs)); slides.push(deckOngoingSlide(f1t, f2t, C0, jobs)); }
+    });
+    // appendix: the applications, and how each benefit is worked out
+    slides.push({ layout: 'section', title: tt('Appendix: the applications and how each benefit is worked out') });
+    deckAppSlides(f1t, f2t, C0).forEach(function (sl) { slides.push(sl); });
     // assumptions appendix: what moves the answer, and the published source behind each figure
-    var evr = assumptionRows().slice(0, 16);
+    var evr = assumptionRows();
     var hdc = function (tx, al) { return { t: tx, bold: true, fill: C0.panel, align: al || 'l', size: 10 }; };
-    var arows = [[hdc(tt('Input')), hdc(tt('Value'), 'r'), hdc(tt('Reference'))]].concat(evr.map(function (x) {
+    var abody = evr.map(function (x) {
       var refs = AVARefs.forKey(x.path).map(function (id) { return AVARefs.byId(id).short; }).join('; ');
       return [{ t: x.label, size: 10, align: 'l' }, { t: x.value, size: 10, align: 'r' }, { t: refs || '–', size: 10, align: 'l' }];
-    }));
-    slides.push({ layout: 'content', title: tt('Assumptions and sources'), items: [{ t: 'table', x: 0.56, y: 1.55, colW: [6.4, 2.9, 2.9], rowH: 0.3, size: 10, rows: arows }], footer1: f1t, footer2: f2t });
+    });
+    var aPages = tablePages([hdc(tt('Input')), hdc(tt('Value'), 'r'), hdc(tt('Reference'))], abody, [6.4, 2.9, 2.91], 10, 0.26, 4.95);
+    aPages.forEach(function (rs, i) { slides.push({ layout: 'content', title: aPages.length > 1 ? tt('Assumptions and sources ({n} of {total})', { n: i + 1, total: aPages.length }) : tt('Assumptions and sources'), items: [{ t: 'table', x: 0.56, y: 1.5, colW: [6.4, 2.9, 2.91], rowH: 0.26, size: 10, rows: rs }], footer1: f1t, footer2: f2t }); });
     // configurations and cases
     var hc = E.hostingCompare(state), ct = E.caseTable(state), hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'r' }; };
     var ci = [{ t: 'text', x: 0.56, y: 1.55, w: 6, h: 0.4, inset: 0, paras: [{ t: 'OutSystems configurations', size: 15, bold: true }] },
@@ -3684,12 +3831,14 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     slides.push({ layout: 'content', title: 'What this is based on', footer1: f1t, footer2: f2t, items: [
       { t: 'table', x: 0.56, y: 1.55, colW: [3.1, 2.8], rowH: 0.42, size: 12, rows: rowsOf(left) }, { t: 'table', x: 6.95, y: 1.55, colW: [3.1, 2.7], rowH: 0.42, size: 12, rows: rowsOf(right) },
       { t: 'text', x: 0.56, y: 5.0, w: 12.21, h: 1.2, inset: 0, paras: [{ t: 'All figures use illustrative placeholder defaults unless a reference is shown. The same annual value applies to both approaches; the advantage comes from cost and from reaching production sooner.', size: 12, color: C0.muted }] }] });
+    DK.fit({ slides: slides });   // text that does not fit is set smaller
     return { slides: slides, jobs: jobs, images: images };
   }
-  function deckSpecInView() { return inView(function () { var defs = chartDefs(), charts = visibleCharts(defs, true).filter(function (d) { return d.id !== 'summary'; }); return deckSpec(charts); }); }   // the charts and slides are drawn for the scenario in view
-  if (window.__AVA_TESTING) window.__avaTest = { deckSpec: deckSpecInView };
+  function deckSpecInView() { return inView(function () { var was = [cbBasis, bauPart]; cbBasis = 'sum'; bauPart = 'all'; try { var defs = chartDefs(), charts = defs.filter(function (d) { return d.id !== 'summary'; }); return deckSpec(charts); } finally { cbBasis = was[0]; bauPart = was[1]; } }); }   // the charts and slides are drawn for the scenario in view
+  if (window.__AVA_TESTING) window.__avaTest = { deckSpec: deckSpecInView, edit: function (fn) { fn(state); recalc(); } };
+  var deckWarn = [];
   function deckBytes() {
-    var spec = deckSpecInView();
+    var spec = deckSpecInView(); deckWarn = DK.checkLayout({ slides: spec.slides });
     return Promise.all(spec.jobs.map(function (j) { return svgToPng(j.svg, 3).then(function (r) { spec.images[j.name] = r.bytes; }); })).then(function () {
       return DK.build({ slides: spec.slides, images: spec.images }, typeof AVABrandTemplate !== 'undefined' ? AVABrandTemplate : false);   // the public build has no brand template and writes a plain deck
     });
@@ -3702,7 +3851,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var name = 'AVA - ' + ((state.company || 'assessment').replace(/[\\\/:*?"<>|]/g, '').trim() || 'assessment') + ' - ' + new Date().toISOString().slice(0, 10) + '.pptx';
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
-      toast(tt('Downloaded {name}. To use it in Google Slides, upload it to Drive and open it with Google Slides.', { name: name }), 9000);
+      var bad = deckWarn.map(function (m) { return parseInt(/^slide (\d+)/.exec(m)[1], 10); }).filter(function (n, i, a) { return a.indexOf(n) === i; });
+      toast(bad.length ? tt('Downloaded {name}. Please check slides {list}: some text may be crowded.', { name: name, list: bad.join(', ') }) : tt('Downloaded {name}. To use it in Google Slides, upload it to Drive and open it with Google Slides.', { name: name }), bad.length ? 14000 : 9000);
     }).catch(function (e) { toast(tt('Could not build the slides:') + ' ' + (e && e.message ? e.message : e), 9000); });
   }
 

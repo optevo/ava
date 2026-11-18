@@ -55,6 +55,82 @@
   }
   function paras(list) { return (list && list.length ? list : [{ t: '' }]).map(para).join(''); }
 
+  /* ---- measuring text, to size table rows and to check that text fits its box. An estimate: about half an em a character (a full em for East Asian characters). ---- */
+  function charEm(ch, bold) { var c = ch.charCodeAt(0); return c >= 0x2E80 ? 1.05 : ch === ' ' ? 0.3 : (bold ? 0.6 : 0.56); }   // a little wide on purpose: real wrapping varies by program and font
+  function textLines(t, widthIn, size, bold) {
+    var lines = 0;
+    String(t === undefined || t === null ? '' : t).split('\n').forEach(function (ln) {
+      var words = ln.split(' '), cur = 0, n = 1, max = Math.max(0.3, widthIn) * 72 / size;   // the line holds this many em
+      words.forEach(function (w, i) {
+        var wl = 0, k; for (k = 0; k < w.length; k++) wl += charEm(w.charAt(k), bold);
+        var sp = i ? 0.28 : 0;
+        if (cur + sp + wl <= max) { cur += sp + wl; return; }
+        if (wl > max) { n += Math.floor((cur + sp + wl) / max); cur = (cur + sp + wl) % max; return; }   // a word longer than a line breaks anywhere
+        n++; cur = wl;
+      });
+      lines += n;
+    });
+    return lines;
+  }
+  function paraHeight(p, widthIn) {
+    var size = p.size || (p.runs && p.runs[0] && p.runs[0].size) || 14, t = p.runs ? p.runs.map(function (r) { return r.t; }).join('') : p.t;
+    return textLines(t, widthIn - (p.bullet ? 0.25 : 0), size, p.bold) * size * 1.2 * ((p.line || 100000) / 100000) / 72 + (p.after || 0) / 72;
+  }
+  function parasTextHeight(list, widthIn) { var h = 0; (list || []).forEach(function (p) { h += paraHeight(p, widthIn); }); return h; }
+  /* The height of each table row: the declared row height, or more when a cell's text needs it (PowerPoint grows a row the same way). */
+  function rowHeights(it) {
+    var rowH = it.rowH || 0.32;
+    return it.rows.map(function (row, ri) {
+      var need = it.rowHs && it.rowHs[ri] ? it.rowHs[ri] : rowH, ci = 0;
+      row.forEach(function (c) {
+        c = typeof c === 'object' && c !== null ? c : { t: c };
+        var span = c.span || 1, w = 0, k; for (k = 0; k < span; k++) w += it.colW[ci + k] || 0;
+        var size = c.size || it.size || 11, h = textLines(c.t, w - 0.16, size, c.bold) * size * 1.2 / 72 + 0.1;
+        if (h > need) need = h;
+        ci += span;
+      });
+      return need;
+    });
+  }
+  function tableHeight(it) { return rowHeights(it).reduce(function (a, b) { return a + b; }, 0); }
+
+  /* ---- guardrails: text that does not fit is set smaller (down to 8 pt), and anything that still looks crowded is reported by slide number ---- */
+  var LIMIT_Y = 6.7, MIN_PT = 8;
+  function scaleSize(o, f) { if (o.size) o.size = Math.max(MIN_PT, Math.round(o.size * f * 10) / 10); }
+  function scaleParas(list, f) { (list || []).forEach(function (p) { if (!p.size) p.size = 14; scaleSize(p, f); (p.runs || []).forEach(function (r) { scaleSize(r, f); }); }); }
+  function fitText(it) {
+    var ins = it.inset === undefined ? 0.05 : it.inset, n = 0;
+    while (n++ < 16 && parasTextHeight(it.paras, it.w - 2 * ins) + 2 * ins > it.h + 0.01) scaleParas(it.paras, 0.92);
+  }
+  function fitTable(it) {
+    var n = 0, limit = LIMIT_Y - it.y;
+    while (n++ < 16 && tableHeight(it) > limit && (it.size || 11) > MIN_PT) {
+      it.size = Math.max(MIN_PT, Math.round((it.size || 11) * 0.92 * 10) / 10); it.rowH = (it.rowH || 0.32) * 0.92;
+      it.rows.forEach(function (row) { row.forEach(function (c) { if (c && typeof c === 'object') scaleSize(c, 0.92); }); });
+    }
+  }
+  function fit(spec) {
+    (spec.slides || []).forEach(function (sl) { (sl.items || []).forEach(function (it) { if (it.t === 'text') fitText(it); else if (it.t === 'table') fitTable(it); }); });
+    return spec;
+  }
+  /* What still looks wrong, as readable lines starting with the slide number: outside the margins or the content area, text that needs more room than its box, items that overlap, a title that cannot fit on a line. */
+  function checkLayout(spec) {
+    var out = [], W = 13.333;
+    (spec.slides || []).forEach(function (sl, n) {
+      var tag = 'slide ' + (n + 1) + ' "' + String(sl.title).split('\n')[0].slice(0, 32) + '"', rects = [];
+      if (sl.layout === 'content' && textLines(sl.title, 11.6, 20, true) > 1) out.push(tag + ': the title is too long');
+      (sl.items || []).forEach(function (it, k) {
+        var w = it.t === 'table' ? it.colW.reduce(function (a, b) { return a + b; }, 0) : it.w, h = it.t === 'table' ? tableHeight(it) : it.h, ins = it.inset === undefined ? 0.05 : it.inset;
+        if (it.x < 0.4 || it.x + w > W - 0.4 + 1e-6) out.push(tag + ': item ' + k + ' is outside the side margins');
+        if (it.y < 1.3 || it.y + h > LIMIT_Y + 0.1) out.push(tag + ': item ' + k + ' runs past the content area (to ' + (it.y + h).toFixed(2) + ' in)');
+        if (it.t === 'text' && parasTextHeight(it.paras, it.w - 2 * ins) + 2 * ins > it.h + 0.02) out.push(tag + ': text box ' + k + ' is too full');
+        rects.push({ x: it.x, y: it.y, w: w, h: h, k: k });
+      });
+      rects.forEach(function (a, i) { rects.slice(i + 1).forEach(function (b) { if (a.x < b.x + b.w - 0.01 && b.x < a.x + a.w - 0.01 && a.y < b.y + b.h - 0.01 && b.y < a.y + a.h - 0.01) out.push(tag + ': items ' + a.k + ' and ' + b.k + ' overlap'); }); });
+    });
+    return out;
+  }
+
   /* ---- shapes ---- */
   var nextId;
   function xfrm(x, y, w, h) { return '<a:xfrm><a:off x="' + emu(x) + '" y="' + emu(y) + '"/><a:ext cx="' + emu(w) + '" cy="' + emu(h) + '"/></a:xfrm>'; }
@@ -70,11 +146,11 @@
       '<p:blipFill><a:blip r:embed="' + rId + '"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>' + xfrm(it.x, it.y, it.w, it.h) + '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>';
   }
   function tableShape(it) {
-    var id = nextId++, rowH = it.rowH || 0.32, total = 0, grid = '', h = rowH * it.rows.length;
+    var id = nextId++, rowH = it.rowH || 0.32, total = 0, grid = '', rhs = rowHeights(it), h = rhs.reduce(function (x, y) { return x + y; }, 0);
     it.colW.forEach(function (w) { total += w; grid += '<a:gridCol w="' + emu(w) + '"/>'; });
     var border = function (side, color) { return '<a:' + side + ' w="' + (color ? 9525 : 0) + '" cap="flat" cmpd="sng" algn="ctr">' + (color ? fillXml(color) : '<a:noFill/>') + '</a:' + side + '>'; };
     var rows = it.rows.map(function (row, ri) {
-      return '<a:tr h="' + emu(it.rowHs && it.rowHs[ri] ? it.rowHs[ri] : rowH) + '">' + row.map(function (c, ci) {
+      return '<a:tr h="' + emu(rhs[ri]) + '">' + row.map(function (c, ci) {
         c = typeof c === 'object' && c !== null ? c : { t: c };
         var p = { t: c.t, size: c.size || it.size || 11, bold: c.bold, color: c.color, align: c.align || (ci === 0 ? 'l' : 'r') };
         return '<a:tc' + (c.span ? ' gridSpan="' + c.span + '"' : '') + '><a:txBody><a:bodyPr/><a:lstStyle/>' + para(p) + '</a:txBody><a:tcPr marL="' + emu(0.08) + '" marR="' + emu(0.08) + '" marT="' + emu(0.03) + '" marB="' + emu(0.03) + '" anchor="ctr">' +
@@ -99,7 +175,9 @@
     nextId = 2;
     var shapes = '';
     /* The template's title style is 80 pt (its big cover size); its own example slides set 36 pt for normal slide titles, so slides must set a size. */
-    shapes += placeholder('title', 0, s.title, s.titleSize || (s.layout === 'cover' ? 40 : 36));
+    var tsize = s.titleSize || (s.layout === 'cover' ? 40 : 36);
+    if (!s.titleSize && s.layout === 'content') { var fit = [36, 32, 28, 26, 24, 22, 20], q; tsize = 20; for (q = 0; q < fit.length; q++) if (textLines(s.title, 11.6, fit[q], true) <= 1) { tsize = fit[q]; break; } }   // a long title (or a longer translation) is set smaller so it stays on one line
+    shapes += placeholder('title', 0, s.title, tsize);
     if (s.layout === 'cover') shapes += placeholder('subTitle', 1, s.subtitle || '', s.subtitleSize || 20);
     if (s.layout === 'content') {
       shapes += placeholder('body', 1, s.footer1 || '');
@@ -167,6 +245,7 @@
   function build(spec, templateB64) {
     var src = templateB64 === false ? null : (templateB64 || root.AVABrandTemplate || null);
     FONT = src ? 'Inter Tight' : 'Arial';   // the brand font comes with the template; without it the plain deck uses a font every machine has
+    fit(spec);
     var parts = ST.zipReadSync(src ? b64decode(src) : plainTemplate()), files = [], names = Object.keys(parts), i, k;
     var ct = ST.fromUtf8(parts['[Content_Types].xml']), prs = ST.fromUtf8(parts['ppt/presentation.xml']), rels = ST.fromUtf8(parts['ppt/_rels/presentation.xml.rels']);
     var overrides = '', sldIds = '', relsAdd = '', media = {};
@@ -194,6 +273,6 @@
     return ST.zipStore(files);
   }
 
-  var api = { build: build, COL: COL, b64decode: b64decode, esc: esc };
+  var api = { build: build, COL: COL, b64decode: b64decode, esc: esc, textLines: textLines, parasTextHeight: parasTextHeight, rowHeights: rowHeights, tableHeight: tableHeight, fit: fit, checkLayout: checkLayout };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.AVADeck = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

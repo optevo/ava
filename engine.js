@@ -32,6 +32,7 @@
   function defaultState() {
     var st = {
       company: '',
+      deckNote: '',        // optional: the note in the footer of every slide (the default says the figures are placeholders until validated)
       currency: 'USD',
       altType: 'code-ai',
       altName: 'AI coding + cloud native',
