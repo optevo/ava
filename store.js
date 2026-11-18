@@ -235,7 +235,7 @@
     return ys.length ? { y: ys } : null;
   }
   /* i18n:begin */
-  var APP_COLS = ['ID', 'Include', 'Application or group of applications', 'Months to deliver', 'Developers', 'Delivery group', 'Type', 'When'];   // When: left empty for today, Roadmap for an application built later
+  var APP_COLS = ['ID', 'Include', 'Application or group of applications', 'Months to deliver', 'Developers', 'Delivery group', 'Type', 'When', 'Value per year (calculated)', 'Description'];   // When: left empty for today, Roadmap for an application built later
   function typeLabel(key) { var out = ''; engine().USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === key) out = x[1]; }); }); return out; }
   function typeKey(text) { var t = String(text || '').trim().toLowerCase(), out = ''; if (!t) return ''; engine().USE_CASES.forEach(function (g) { g[1].forEach(function (x) { if (x[0] === t || x[1].toLowerCase() === t) out = x[0]; }); }); return out; }
   var DRIVER_NAMES = { cost: 'Cost savings', rev: 'Revenue uplift', risk: 'Risk reduction' };
@@ -283,7 +283,7 @@
     rows.push(head(APP_COLS));
     var first = rows.length + 1, last = first + Math.max(list.length, 1);   // the sheet rows of the applications table, plus the blank row after it for adding one
     list.forEach(function (p, i) {
-      rows.push([inp(ids[i]), inp(listLabel(lists, 'yn', p.include !== false ? 'yes' : 'no')), inp(p.name), inp(p.months), inp(p.devs), inp(p.group), inp(p.useCase ? listLabel(lists, 'type', p.useCase) : ''), inp(p.phase === 'roadmap' ? listLabel(lists, 'phase', 'roadmap') : '')]);
+      rows.push([inp(ids[i]), inp(listLabel(lists, 'yn', p.include !== false ? 'yes' : 'no')), inp(p.name), inp(p.months), inp(p.devs), inp(p.group), inp(p.useCase ? listLabel(lists, 'type', p.useCase) : ''), inp(p.phase === 'roadmap' ? listLabel(lists, 'phase', 'roadmap') : ''), calc(0), inp(p.desc || '')]);
     });
     var blockRanges = [], appFirstRow = first - 0;   // the sheet rows of each block's IDs and values, for the per-application totals
     var cashLabel = listLabel(lists, 'how', 'cash').replace(/"/g, '""'), HRS = E.LINE_HOURS || 1800, appTotals = list.map(function () { return 0; });
@@ -317,7 +317,6 @@
       else blockRanges.push({ from: startRow, to: rows.length, val: colName(b.cols.map(function (c) { return c[1]; }).indexOf('_val')) });
     });
     // each application's value a year: the sum of its lines across the blocks, as a formula that follows edits
-    rows[first - 2].push({ v: tt('Value per year (calculated)'), s: STY.head });
     list.forEach(function (p, i) {
       var parts = blockRanges.map(function (r) { return 'SUMIF($A$' + r.from + ':$A$' + r.to + ',$A' + (first + i) + ',$' + r.val + '$' + r.from + ':$' + r.val + '$' + r.to + ')'; });
       rows[first - 1 + i][8] = parts.length ? { f: parts.join('+'), v: Math.round(appTotals[i] * 100) / 100, s: STY.calc } : calc(0);
@@ -347,6 +346,7 @@
         var id = txt(r[0]) || 'A' + (list.length + 1), app = { name: name, include: listKey(fileLists, 'yn', r[1], 'yes') !== 'no' && !/^(no|n|false|0)$/i.test(txt(r[1])), months: num(r[3], 1) };
         if (legacyApps) app.value = { cost: num(r[4], 0), rev: num(r[5], 0), risk: num(r[6], 0) };   // a workbook from before the calculators: typed values, which become simple calculators
         else { if (num(r[4], 0) > 0) app.devs = num(r[4], 0); if (txt(r[5])) app.group = txt(r[5]); if (txt(r[6])) app.useCase = listKey(fileLists, 'type', r[6], '') || typeKey(r[6]); }
+        if (txt(r[9])) app.desc = txt(r[9]);
         if (txt(r[7]) && (listKey(fileLists, 'phase', r[7], '') === 'roadmap' || /^roadmap$/i.test(txt(r[7])))) app.phase = 'roadmap';   // only a roadmap application is tagged
         if (byId[id.toLowerCase()]) warnings.push('The ID ' + id + ' is used by more than one application, so only the last keeps its benefit lines.');
         list.push(app); byId[id.toLowerCase()] = app;
@@ -405,7 +405,7 @@
     'team.devs': ['Developers (portfolio default)', ''], 'team.hours': ['Hours per week', 'Working hours per person per week that the team is paid for.'],
     altDevFactor: ['Developers vs OutSystems ×', '1 means the same number of developers. Above 1 means the alternative needs more.'], deliveryMode: ['Delivery cost basis', 'team = built from developers and rates; quote = a given cost.'],
     deliveryQuote: ['Delivery cost given', 'Used when the cost basis is quote.'], 'platform.os': ['Platform licence', 'Annual OutSystems platform licence. It is the same whether OutSystems hosts it (PaaS) or the organisation does (self-managed); only the infrastructure, people and setup differ.'],
-    'platform.alt': ['Alternative: tooling and services per year', ''], 'platform.sentry': ['Additional Sentry licence', 'The extra annual licence for the Sentry security and compliance add-on, on top of the platform licence.'],
+    'platform.success': ['OutSystems success plan per year', 'The yearly cost of the OutSystems success plan (a designated technical success manager), charged with the licence. It has no equivalent on the alternative side.'], 'platform.alt': ['Alternative: tooling and services per year', ''], 'platform.sentry': ['Additional Sentry licence', 'The extra annual licence for the Sentry security and compliance add-on, on top of the platform licence.'],
     osHosting: ['OutSystems hosting', 'paas = OutSystems runs the cloud; paas-sentry = PaaS with the Sentry add-on; self = the organisation runs it.'], cloudProvider: ['Cloud provider', ''], osTooling: ['OutSystems: additional tooling per year', ''],
     'infra.os': ['Infrastructure / yr', 'Only if OutSystems is self-managed.'], 'infra.alt': ['Alternative: infrastructure per year', ''], 'opsFte.os': ['OutSystems: operating people (FTE)', ''], 'opsFte.alt': ['Alternative: operating people (FTE)', ''],
     'assurance.required': ['High assurance required', 'Yes if the organisation needs the high-assurance security and compliance set.'], 'assurance.attest': ['Attestation counts as assurance', ''],

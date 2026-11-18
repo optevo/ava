@@ -89,7 +89,7 @@
       over: {},
       hardOnly: false,     // exclude soft value drivers
       osTooling: 0,         // OutSystems-side tooling beyond the platform licence, per year (used when the tooling breakdown is a single total)
-      platform: { alt: 150000, os: 400000, sentry: 60000 },        // licences per year: the OutSystems platform; the alternative's toolchain (AI tools, CI/CD, scanning, observability...)
+      platform: { alt: 150000, os: 400000, sentry: 60000, success: 0 },        // licences per year: the OutSystems platform; the alternative's toolchain (AI tools, CI/CD, scanning, observability...)
       /* Compliance-grade security. ODC PaaS with the Sentry add-on gives intrusion detection, runtime integrity monitoring, malware scanning, IP filtering,
        * audit-trail streaming, 24x7 monitoring and contractually valid SOC 2 Type II, HIPAA and PCI attestations out of the box (per OutSystems' description of the Sentry offering);
        * Sentry is available for PaaS only. Another approach has to buy and run the equivalent. 'required' switches the equivalent costs on for the alternative (and for
@@ -842,7 +842,7 @@
   /* Tooling and services per year, kept apart from the licence: the alternative's AI tools and toolchain; for OutSystems the share of those it still needs, and the services run whatever the hosting. */
   function toolingAnnual(state, ap) {
     if (ap === 'alt') return hasItems(state.toolItems) ? sumAnnual(state.toolItems) : num(state.platform.alt);
-    return (hasItems(state.toolItems) ? sumOs(state.toolItems) : num(state.osTooling)) + externalAnnual(state);
+    return (hasItems(state.toolItems) ? sumOs(state.toolItems) : num(state.osTooling)) + externalAnnual(state) + num(state.platform.success);   // the success plan is a service OutSystems sells with the licence
   }
   /* People who run the platform or cloud services, per week at full run. Each line is costed at its own role's rate; OutSystems needs only its share. */
   function opsWeekCost(state, ap, raw) {
@@ -988,7 +988,7 @@
     var fam = function (k) { return Math.pow(1 + num(es[k]) / 100, y); };
     var top = function (obj, key, path, family) { if (obj[key] !== undefined) obj[key] = num(obj[key]) * (hasPattern(ov[path]) ? factorAt(ov[path], y) : fam(family)); };
     ALL_ROLES.forEach(function (r) { if (s.rates[r.key] !== undefined) s.rates[r.key] = num(s.rates[r.key]) * fam('labour'); });
-    ['alt', 'os', 'sentry'].forEach(function (k) { top(s.platform, k, 'platform/' + k, 'licence'); });
+    ['alt', 'os', 'sentry', 'success'].forEach(function (k) { top(s.platform, k, 'platform/' + k, 'licence'); });
     top(s, 'osTooling', 'osTooling', 'licence');
     ['alt', 'os'].forEach(function (k) { top(s.infra, k, 'infra/' + k, 'infra'); });
     [['toolItems', 'licence'], ['assureItems', 'licence'], ['appAssure', 'licence'], ['infraItems', 'infra']].forEach(function (g) {

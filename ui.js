@@ -18,7 +18,7 @@
     { id: 'power-platform', name: 'Microsoft Power Platform' },
     { id: 'other', name: 'Other (enter name)' }
   ];
-  var MONEY_PATHS = ['platform.alt', 'platform.os', 'platform.sentry', 'infra.alt', 'infra.os', 'tokens.spend', 'value.cost', 'value.risk', 'value.rev', 'deliveryQuote', 'osTooling', 'setup.os.paas', 'setup.os.self', 'setup.alt.hiring', 'setup.alt.build', 'setup.alt.tools', 'skill.levels.experienced.enable', 'skill.levels.mixed.enable', 'skill.levels.newer.enable'];
+  var MONEY_PATHS = ['platform.alt', 'platform.os', 'platform.sentry', 'platform.success', 'infra.alt', 'infra.os', 'tokens.spend', 'value.cost', 'value.risk', 'value.rev', 'deliveryQuote', 'osTooling', 'setup.os.paas', 'setup.os.self', 'setup.alt.hiring', 'setup.alt.build', 'setup.alt.tools', 'skill.levels.experienced.enable', 'skill.levels.mixed.enable', 'skill.levels.newer.enable'];
 
   var HELP = {
     tileTtp: 'Average time to production::Expected weeks from an approved idea to being live, for one application. It includes queue waits and the repeat reviews that follow a rejection. Build is fast for both approaches, so most of the difference is what happens after it.',
@@ -324,6 +324,7 @@
     if (!road) h += row('Platform deployment', hostingSelect(), 'PaaS: OutSystems provisions and runs the cloud, so there is no extra infrastructure or operating people, and no setup. Self-managed: the organisation runs it on its own cloud, so it pays for infrastructure and some operating people, but setup is prescriptive and cheap and maintenance is simpler than a cloud-native build.');
     h += row((road ? 'Extra licence per year' : 'Licence per year') + ' <i>' + esc(cur) + '</i>', inp(road ? 'roadmap.licence.os' : 'platform.os', 5000, 0),
       road ? 'The extra yearly OutSystems platform licence the roadmap needs, on top of the licence for the initial applications. It is charged from when the first roadmap application starts.' : 'The yearly OutSystems platform licence. It is the same whether OutSystems hosts it (PaaS) or the organisation does (self-managed).', road ? 'roadmap.licence.os' : 'platform.os');
+    if (!road) h += row('OutSystems success plan per year <i>' + esc(cur) + '</i>', inp('platform.success', 5000, 0), 'The yearly cost of the OutSystems success plan (a designated technical success manager who gives proactive guidance), if one is bought with the licence. It is charged with the licence and has no equivalent on the alternative side. Leave at zero if there is none.', 'platform.success');
     if (road) {
       var rs = num0(state.roadmap && state.roadmap.licence && state.roadmap.licence.sentry) > 0;
       h += '<label class="chk"' + C.tip(tt('High assurance (Sentry)'), tt('Tick if the roadmap needs the Sentry security and compliance add-on, for an extra yearly licence.')) + '><input type="checkbox" data-rmsentry="1"' + (rs ? ' checked' : '') + '> ' + tt('High assurance (Sentry)') + '</label>';
@@ -1555,7 +1556,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var lines = p.build || [], guide = typeGuide(p), cats = {};
     lines.forEach(function (l, j) { var c = lineCat(l); (cats[c] = cats[c] || []).push(j); });
     var multi = Object.keys(cats).length > 1;
-    var html = '<div class="bpanel"><div class="bhead"><b>' + tt('Value for {name}', { name: esc(p.name || tt('this application')) }) + '</b>' + (multi ? '' : '<span class="bsum" id="bsum-' + i + '"></span>') + (lines.length ? '<button type="button" class="b" data-act="bl-copy" data-i="' + i + '"' + C.tip('Copy these lines', 'Copies these benefit lines to every other included application that has none yet, so a group of similar applications starts from the same build-up.') + '>' + tt('Copy these lines to the other applications') + '</button>' : '') + '</div>';
+    var html = '<div class="bpanel"><div class="bdesc"><label>' + tt('Description') + ' <input type="text" data-tpath="projectList.' + i + '.desc" value="' + esc(p.desc || '') + '" placeholder="' + esc(tt('Optional: what it does, and the assumptions behind its benefits')) + '"></label></div><div class="bhead"><b>' + tt('Value for {name}', { name: esc(p.name || tt('this application')) }) + '</b>' + (multi ? '' : '<span class="bsum" id="bsum-' + i + '"></span>') + (lines.length ? '<button type="button" class="b" data-act="bl-copy" data-i="' + i + '"' + C.tip('Copy these lines', 'Copies these benefit lines to every other included application that has none yet, so a group of similar applications starts from the same build-up.') + '>' + tt('Copy these lines to the other applications') + '</button>' : '') + '</div>';
     LINE_CATS.forEach(function (c) {
       if (!cats[c[0]]) return;
       if (multi) html += '<div class="bgh"><b>' + tt(c[1]) + '</b><span class="bsub" id="bg-' + i + '-' + c[0] + '"></span></div>';
@@ -2369,6 +2370,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     E.ensureGroups(state).forEach(function (g) { if (g.mode === 'quote') add(G1, g.name + ': ' + tt('OutSystems delivery cost'), M(g.quote), 'deliveryQuote'); });
     add(G1, tt('OutSystems developers'), f1(E.devsFor(state, 'os')), 'team.devs');
     add(G1, tt('OutSystems platform licence'), tt('{amt} a year', { amt: M(state.platform.os) }), 'platform.os');
+    if (num0(state.platform.success) > 0) add(G1, tt('OutSystems success plan'), tt('{amt} a year', { amt: M(state.platform.success) }), 'platform.success');
     if (E.sentryUplift(state) > 0) add(G1, tt('Additional Sentry licence'), tt('{amt} a year', { amt: M(state.platform.sentry) }), 'platform.sentry');
     pl.forEach(function (p) { add(G1, tt('{name}: value per year', { name: p.name }), M(p.value.cost + p.value.rev + p.value.risk), 'value'); });
     add(G2, tt('Analysis period'), tt('{n} years', { n: state.horizon }), 'horizon');
@@ -2385,6 +2387,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     deliveryMonths: 'How long OutSystems takes to deliver the whole portfolio: the delivery teams\' active work on design, build and fixes, not review queues.',
     'platform.os': 'Annual OutSystems platform licence. It is the same whether OutSystems hosts it or the organisation does.',
     'platform.sentry': 'Annual licence for the additional Sentry product, needed with some OutSystems options.',
+    'platform.success': 'Annual cost of the OutSystems success plan (a designated technical success manager), charged with the licence.',
     value: 'Yearly value of the application once it is live: its cost savings, revenue uplift and risk reduction.'
   };
   function evTip(r) {
