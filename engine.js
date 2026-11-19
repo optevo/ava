@@ -32,6 +32,7 @@
   function defaultState() {
     var st = {
       company: '',
+      deckConfigs: 'one',  // the slides show one OutSystems configuration (the one chosen); 'all' shows every configuration for comparison
       deckNote: '',        // optional: the note in the footer of every slide (the default says the figures are placeholders until validated)
       currency: 'USD',
       altType: 'code-ai',
@@ -1037,7 +1038,8 @@
     for (k = 0; k < W; k++) { var licDue = k >= licW && (k - licW) % WPY === 0; cost.platform[k] = licDue ? licenceAnnual(ys(yr(k)), ap) : 0; cost.tooling[k] = licDue ? toolingAnnual(ys(yr(k)), ap) * runShare(state) : 0; }   // both are paid yearly, in advance
     var rmExtra = roadmapLicence(state, ap), rmStart = null;   // the roadmap's extra licence: yearly in advance from when its first application starts
     if (rmExtra > 0) sched.forEach(function (p) { if (p.phase === 'roadmap' && (rmStart === null || p.start < rmStart)) rmStart = p.start; });
-    if (rmStart !== null) for (k = Math.max(0, Math.round(rmStart)); k < W; k += WPY) cost.platform[k] += rmExtra * (varies(state) ? Math.pow(1 + num((state.escal || {}).licence) / 100, yr(k)) : 1);
+    var rmPt = (state.over || {})['roadmap/licence/os'], rmN = 0;   // a yearly pattern for the extra licence counts years from when the roadmap starts: {y: [first year, second year, ...]}, the last repeating
+    if (rmStart !== null) for (k = Math.max(0, Math.round(rmStart)); k < W; k += WPY, rmN++) cost.platform[k] += rmExtra * (hasPattern(rmPt) ? factorAt(rmPt, rmN) : (varies(state) ? Math.pow(1 + num((state.escal || {}).licence) / 100, yr(k)) : 1));
     addUniform(cost.setup, 0, setupWeeks(state, ap), setupAmount(state, ap));   // one-off, spread over the setup period
 
     var ramp = Math.max(0, num(state.rampWeeks)), growth = num(state.growth) / 100;

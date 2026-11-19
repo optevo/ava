@@ -2643,6 +2643,12 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     if (both) tiles.forEach(function (t, i) { t.rm = { today: both.today.tiles[i].v, roadmap: both.roadmap.tiles[i].v }; });
     return { tiles: tiles, headline: headline, take: take, based: based };
   }
+  /* Run something with the state and results of one scenario (initial applications only, or with the roadmap), then put them back. */
+  function atScenario(w, fn) {
+    if (!rmRuns || !baseState) return fn();
+    var keepS = state, keepR = res; state = E.scenarioState(baseState, w); if (state.roadmap) state.roadmap.view = w; res = rmRuns[w];   // the copy is private: the charts that follow the toggle draw this scenario
+    try { return fn(); } finally { state = keepS; res = keepR; }
+  }
   function bothFacts() {
     if (!rmRuns || inFacts || !baseState) return null;
     var keepS = state, keepR = res, out = {}; inFacts = true;
@@ -3652,7 +3658,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       { t: 'text', x: 0.56, y: 6.0, w: 12.21, h: 0.6, inset: 0, paras: [{ t: caseWords() + ' ' + tt('The three cases change how much of the benefit arrives; the costs stay the same.'), size: 10, color: C0.muted }] }] };
   }
   /* The figures behind the costs and benefits chart: every line for both approaches and the difference. */
-  function deckFiguresSlide(f1t, f2t, C0, yrs) {
+  function deckFiguresSlide(f1t, f2t, C0, yrs, title) {
     var r = res, M = C.money, hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'r', size: 10 }; };
     var g = function (t) { return [{ t: t, bold: true, fill: C0.panel, span: 4, align: 'l', size: 10 }]; };
     var line = function (label, a, o, bold) { return [{ t: label, align: 'l', size: 10, bold: bold }, { t: M(o), align: 'r', size: 10, bold: bold }, { t: M(a), align: 'r', size: 10, bold: bold }, { t: M(o - a), align: 'r', size: 10, bold: bold }]; };
@@ -3664,7 +3670,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     E.COST_CATS.forEach(function (c) { if (r.os.sumCost[c.key] || r.alt.sumCost[c.key]) rows.push(line(tt(c.label), r.alt.sumCost[c.key] || 0, r.os.sumCost[c.key] || 0)); });
     rows.push(line(tt('Total costs'), r.alt.totalCost, r.os.totalCost, true));
     rows.push(line(tt('Net benefit'), r.alt.totalValue - r.alt.totalCost, r.os.totalValue - r.os.totalCost, true));
-    return { layout: 'content', title: tt('What it costs and earns: the figures'), footer1: f1t, footer2: f2t, items: [
+    return { layout: 'content', title: title || tt('What it costs and earns: the figures'), footer1: f1t, footer2: f2t, items: [
       { t: 'table', x: 0.56, y: 1.5, colW: [5.2, 2.3, 2.3, 2.41], rowH: 0.26, size: 10, rows: rows },
       { t: 'text', x: 0.56, y: 6.2, w: 12.21, h: 0.4, inset: 0, paras: [{ t: tt('Difference is OutSystems minus the alternative: for costs, a negative figure is a saving.'), size: 10, color: C0.muted }] }] };
   }
@@ -3700,10 +3706,11 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var when = function (wk) { if (wk === null || wk === undefined) return ''; var d = E.dateAtWeek(state, wk); return d ? showMonth(d) : tt('Month {n}', { n: Math.max(1, Math.ceil(wk / (E.WPY / 12))) }); };
     var tot = function (p) { var t = 0; (p.build || []).forEach(function (l) { var v = E.lineValue(l); t += v.cost + v.rev + v.risk; }); return t; };
     var hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'l', size: 10 }; };
-    var sum = 0, body = [], head = [hd('#', 'r'), hd(tt('Application')), hd(tt('Live from')), hd(tt('Benefit per year'), 'r'), hd(tt('Benefit lines'), 'r')];
-    list.forEach(function (p, i) { var t = tot(p); sum += t; body.push([{ t: String(i + 1), align: 'r', size: 10, color: C0.muted }, { t: p.name, align: 'l', size: 10 }, { t: when(live(p)), align: 'l', size: 10 }, { t: M(t), align: 'r', size: 10 }, { t: String((p.build || []).length), align: 'r', size: 10 }]); });
-    body.push([{ t: '', align: 'r' }, { t: tt('All applications'), align: 'l', bold: true, size: 10 }, { t: '', align: 'l' }, { t: M(sum), align: 'r', bold: true, size: 10 }, { t: '', align: 'r' }]);
-    var ovCols = [0.5, 6.0, 2.0, 2.2, 1.51], ovPages = tablePages(head, body, ovCols, 10, 0.25, 4.45);
+    var anyRm = list.some(function (p) { return p.phase === 'roadmap'; }), whenOf = function (p) { return p.phase === 'roadmap' ? tt('Roadmap') : tt('Initial'); };
+    var sum = 0, body = [], head = [hd('#', 'r'), hd(tt('Application'))].concat(anyRm ? [hd(tt('When'))] : []).concat([hd(tt('Live from')), hd(tt('Benefit per year'), 'r'), hd(tt('Benefit lines'), 'r')]);
+    list.forEach(function (p, i) { var t = tot(p); sum += t; body.push([{ t: String(i + 1), align: 'r', size: 10, color: C0.muted }, { t: p.name, align: 'l', size: 10 }].concat(anyRm ? [{ t: whenOf(p), align: 'l', size: 10 }] : []).concat([{ t: when(live(p)), align: 'l', size: 10 }, { t: M(t), align: 'r', size: 10 }, { t: String((p.build || []).length), align: 'r', size: 10 }])); });
+    body.push([{ t: '', align: 'r' }, { t: tt('All applications'), align: 'l', bold: true, size: 10 }].concat(anyRm ? [{ t: '', align: 'l' }] : []).concat([{ t: '', align: 'l' }, { t: M(sum), align: 'r', bold: true, size: 10 }, { t: '', align: 'r' }]));
+    var ovCols = anyRm ? [0.5, 5.0, 1.4, 2.0, 2.0, 1.31] : [0.5, 6.0, 2.0, 2.2, 1.51], ovPages = tablePages(head, body, ovCols, 10, 0.25, 4.45);
     ovPages.forEach(function (rs, i) {
       out.push({ layout: 'content', title: ovPages.length > 1 ? tt('The applications in scope ({n} of {total})', { n: i + 1, total: ovPages.length }) : tt('The applications in scope'), footer1: f1t, footer2: f2t, items: [{ t: 'table', x: 0.56, y: 1.5, colW: ovCols, rowH: 0.25, size: 10, rows: rs },
         { t: 'text', x: 0.56, y: 6.3, w: 12.21, h: 0.4, inset: 0, paras: [{ t: tt('Benefit per year is the sum of each application\'s benefit lines once it is live, before the ramp-up. The next pages show how each line is worked out.'), size: 10, color: C0.muted }] }] });
@@ -3713,7 +3720,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var startPage = function () { cur = { rows: [[hd(tt('Benefit')), hd(tt('How it is calculated')), hd(tt('Why we think so')), hd(tt('Per year'), 'r')]] }; pages.push(cur); };
     var heightOf = function (rs) { return DK.tableHeight({ colW: [2.55, 4.35, 3.9, 1.41], rowH: 0.26, size: 9.5, rows: rs }); };
     list.forEach(function (p) {
-      var rs = [[{ t: p.name, bold: true, fill: C0.panel, span: 3, align: 'l', size: 10.5 }, { t: M(tot(p)), bold: true, fill: C0.panel, align: 'r', size: 10.5 }]];
+      var rs = [[{ t: p.name + (anyRm ? '  ·  ' + whenOf(p) : ''), bold: true, fill: C0.panel, span: 3, align: 'l', size: 10.5 }, { t: M(tot(p)), bold: true, fill: C0.panel, align: 'r', size: 10.5 }]];
       if (p.desc) rs.push([{ t: p.desc, span: 4, align: 'l', size: 9, color: C0.muted }]);
       (p.build || []).forEach(function (l) { var w = lineWords(l); rs.push([{ t: w.what, align: 'l', size: 9.5, bold: true }, { t: w.formula, align: 'l', size: 9.5 }, { t: w.note, align: 'l', size: 9, color: C0.muted }, { t: M(w.per), align: 'r', size: 9.5 }]); });
       if (!cur) startPage();
@@ -3727,13 +3734,14 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
   }
   function deckSpec(charts) {
     var C0 = DK.COL, org = state.company && state.company.trim() ? state.company.trim() : '', alt = altLabel(), MS = C.moneyShort, M = C.money;
-    var f1t = (org ? org + '  ·  ' : tt('EXAMPLE NUMBERS') + '  ·  ') + 'AI Value Assessment', f2t = state.deckNote && state.deckNote.trim() ? state.deckNote.trim() : 'Illustrative figures: placeholders until validated', slides = [], images = {};
-    var facts = summaryFacts(), tiles = facts.tiles, lede = facts.take;
+    var f1base = (org ? org + '  ·  ' : tt('EXAMPLE NUMBERS') + '  ·  ') + 'AI Value Assessment', f1t = f1base + (rmRuns && baseState ? '  ·  ' + tt('Initial + roadmap') : ''), f2t = state.deckNote && state.deckNote.trim() ? state.deckNote.trim() : 'Illustrative figures: placeholders until validated', slides = [], images = {};
     var caseKey = E.caseOf(state), caseName = caseKey ? E.casesOf(state)[caseKey].label : 'Custom', yrs = state.horizon === 1 ? tt('1 year') : tt('{n} years', { n: state.horizon });
     var cm = { conservative: C0.amber, likely: C0.os, optimistic: C0.cyan }, accent = cm[caseKey] || C0.alt;
     // 1 cover
     slides.push({ layout: 'cover', title: org ? tt('Value assessment') + '\n' + org : tt('AI Value Assessment'), titleSize: 40, subtitle: tt('AI Value Assessment') + '\n' + tt('OutSystems compared with {alt}', { alt: alt }) + '\n' + new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }), subtitleSize: 18 });
-    // 2 summary
+    // the answer: the tiles, the message, and the net advantage and payback in each case; a function so a deck with a roadmap can show it for each scenario
+    var answerSlide = function (title, foot) {
+    var facts = summaryFacts(), tiles = facts.tiles, lede = facts.take;
     var perRow = tiles.length > 4 ? Math.ceil(tiles.length / 2) : Math.max(1, tiles.length), nRows = Math.ceil(tiles.length / perRow) || 1, tw = (12.21 - (perRow - 1) * 0.18) / perRow, items = [];
     var tileParas = function (t) { return [{ t: t.k.toUpperCase(), size: nRows > 1 ? 9.5 : 10, color: C0.muted, after: 4 }, { t: t.v, size: nRows > 1 ? 24 : 28, bold: true, after: 3 }, { t: t.s, size: nRows > 1 ? 11 : 12, color: C0.muted }]; };
     var th = Math.min(nRows > 1 ? 1.6 : 1.75, Math.max(1.1, Math.max.apply(null, tiles.map(function (t) { return DK.parasTextHeight(tileParas(t), tw - 0.24) + 0.26; }))));   // tiles are as tall as their text needs
@@ -3749,19 +3757,26 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     items.push({ t: 'table', x: 0.56, y: yBelow + 0.85, colW: [4.41, 2.6, 2.6, 2.6], rowH: 0.26, size: 10, rows: [[ch0(period, 'l', { bold: false, color: C0.muted })].concat(cr0.map(function (c) { return ch0(tt(c.label)); })),
       [{ t: tt('Net present value advantage'), align: 'l', size: 10, color: C0.muted }].concat(cr0.map(function (c) { return { t: MS(c.r.advantage), align: 'r', size: 10, bold: true }; })),
       [{ t: tt('OutSystems payback'), align: 'l', size: 10, color: C0.muted }].concat(cr0.map(function (c) { return { t: mo0(c.r.os.paybackMonths), align: 'r', size: 10 }; }))] });
-    slides.push({ layout: 'content', title: tt('The answer'), items: items, footer1: f1t, footer2: f2t });
+    return { layout: 'content', title: title, items: items, footer1: foot || f1t, footer2: f2t };
+    };
+    var bfA = rmRuns && baseState ? true : false;   // with a roadmap: the answer for the initial applications, and for the whole portfolio
+    if (bfA) {
+      slides.push(atScenario('today', function () { inFacts = true; try { return answerSlide(tt('The answer: initial applications'), f1base + '  ·  ' + tt('Initial applications')); } finally { inFacts = false; } }));
+      slides.push(atScenario('roadmap', function () { inFacts = true; try { return answerSlide(tt('The answer: initial + roadmap'), f1base + '  ·  ' + tt('Initial + roadmap')); } finally { inFacts = false; } }));
+    } else slides.push(answerSlide(tt('The answer')));
     var bf = bothFacts();   // with a roadmap: the six figures for today and with the roadmap, side by side
     if (bf) {
       var cellOf = function (txt, o) { return Object.assign({ t: txt }, o); }, hdr = [cellOf('', { align: 'l' }), cellOf(tt('Initial applications'), { align: 'r', bold: true }), cellOf(tt('Initial + roadmap'), { align: 'r', bold: true })];
-      slides.push({ layout: 'content', title: tt('Initial applications and with the roadmap'), footer1: f1t, footer2: f2t, items: [
-        { t: 'table', x: 0.56, y: 1.55, colW: [5.2, 3.5, 3.5], rowH: 0.55, size: 13, rows: [hdr].concat(bf.today.tiles.map(function (tl, i) { return [cellOf(tt(tl.k), { align: 'l', color: C0.muted }), cellOf(tl.v, { align: 'r', bold: true }), cellOf(bf.roadmap.tiles[i].v, { align: 'r', bold: true })]; })) },
-        { t: 'text', x: 0.56, y: 5.9, w: 12.21, h: 0.8, inset: 0, paras: [{ t: tt('The initial applications against the initial applications plus the roadmap, each compared with the alternative building the same applications. The roadmap needs an extra licence from when it starts.'), size: 11, color: C0.muted }] }] });
+      var cmpTable = { t: 'table', x: 0.56, y: 1.5, colW: [5.2, 3.5, 3.5], rowH: 0.46, size: 12, rows: [hdr].concat(bf.today.tiles.map(function (tl, i) { return [cellOf(tt(tl.k), { align: 'l', color: C0.muted }), cellOf(tl.v, { align: 'r', bold: true }), cellOf(bf.roadmap.tiles[i].v, { align: 'r', bold: true })]; })) };
+      slides.push({ layout: 'content', title: tt('Initial applications and with the roadmap'), footer1: f1t, footer2: f2t, items: [cmpTable,
+        { t: 'text', x: 0.56, y: 1.5 + DK.tableHeight(cmpTable) + 0.2, w: 12.21, h: 0.6, inset: 0, paras: [{ t: tt('The initial applications against the initial applications plus the roadmap, each compared with the alternative building the same applications. The roadmap needs an extra licence from when it starts.'), size: 11, color: C0.muted }] }] });
     }
     // chart slides
     var jobs = [], chartSlides = [];
-    charts.forEach(function (d, i) {
-      var name = 'chart' + (i + 1), it = [], side = boxesOf((d.extra || '') + hostBox() + casesBox());
-      var slide = { layout: 'content', title: d.title, items: it, footer1: f1t, footer2: f2t };
+    var curSlides = [];   // with a roadmap: the initial applications on their own, beside the whole portfolio
+    var makeChartSlide = function (d, name, foot) {
+      var it = [], side = boxesOf(d.extra || '');   // the configurations and the cases have their own slides: not repeated beside every chart
+      var slide = { layout: 'content', title: d.title, items: it, footer1: foot, footer2: f2t };
       if (d.id === 'financials') {
         var rows = tableRowsOf(htmlFinancials()), ncol = rows.length ? rows[0].cells.length : 0, cw = [3.2]; for (var q = 1; q < ncol; q++) cw.push((12.21 - 3.2) / (ncol - 1));
         if (rows.length) it.push({ t: 'table', x: 0.56, y: 1.55, colW: cw, rowH: 0.27, size: 9.5, rows: rows.map(function (r) {
@@ -3788,11 +3803,18 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
           if (rd.length) it.push({ t: 'text', x: 0.56, y: 1.55 + h + 0.12, w: 7.7, h: rdH, inset: 0, paras: rd });
         }
       }
-      slide.id = d.id; chartSlides.push(slide);
-    });
+      return slide;
+    };
+    charts.forEach(function (d, i) { var sl = makeChartSlide(d, 'chart' + (i + 1), f1t); sl.id = d.id; chartSlides.push(sl); });
+    if (rmRuns && baseState) {
+      var footToday = f1base + '  ·  ' + tt('Initial applications');
+      curSlides.push(atScenario('today', function () { return deckFiguresSlide(footToday, f2t, C0, yrs, tt('Initial applications: what it costs and earns')); }));
+      curSlides.push(atScenario('today', function () { var pd = chartDefs().filter(function (x) { return x.id === 'payback'; })[0], sl = makeChartSlide(pd, 'init_payback', footToday); sl.title = tt('Initial applications: when it pays back'); return sl; }));
+    }
     // the order of the story: the three cases, costs and earnings (chart, figures, ongoing), payback, advantage, timeline, financials, then how sure and time at each stage
     var order = ['cost', 'payback', 'bridge', 'rmbuild', 'rmadds', 'timeline', 'financials', 'sure', 'stages'], rank = function (id) { var i = order.indexOf(id); return i < 0 ? 99 : i; };
     chartSlides.forEach(function (sl, i) { sl.ix = i; }); chartSlides.sort(function (a, b) { return rank(a.id) - rank(b.id) || a.ix - b.ix; });
+    curSlides.forEach(function (sl) { slides.push(sl); });
     slides.push(deckCasesSlide(f1t, f2t, C0, yrs));
     chartSlides.forEach(function (sl) {
       slides.push(sl);
@@ -3810,16 +3832,14 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     });
     var aPages = tablePages([hdc(tt('Input')), hdc(tt('Value'), 'r'), hdc(tt('Reference'))], abody, [6.4, 2.9, 2.91], 10, 0.26, 4.95);
     aPages.forEach(function (rs, i) { slides.push({ layout: 'content', title: aPages.length > 1 ? tt('Assumptions and sources ({n} of {total})', { n: i + 1, total: aPages.length }) : tt('Assumptions and sources'), items: [{ t: 'table', x: 0.56, y: 1.5, colW: [6.4, 2.9, 2.91], rowH: 0.26, size: 10, rows: rs }], footer1: f1t, footer2: f2t }); });
-    // configurations and cases
-    var hc = E.hostingCompare(state), ct = E.caseTable(state), hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'r' }; };
-    var ci = [{ t: 'text', x: 0.56, y: 1.55, w: 6, h: 0.4, inset: 0, paras: [{ t: 'OutSystems configurations', size: 15, bold: true }] },
-      { t: 'table', x: 0.56, y: 2.0, colW: [2.1, 1.6, 1.9], rowH: 0.4, size: 12, rows: [[hd('', 'l'), hd('Net advantage'), hd('Running cost a year')]].concat(CFG_ROWS.map(function (c) { return [c[1], M(hc[c[2]].advantage), M(hc[c[2]].ongoing)]; })) },
-      { t: 'text', x: 6.9, y: 1.55, w: 6, h: 0.4, inset: 0, paras: [{ t: 'If less of the benefit arrives', size: 15, bold: true }] },
-      { t: 'table', x: 6.9, y: 2.0, colW: [2.0, 1.9, 1.9], rowH: 0.4, size: 12, rows: [[hd('', 'l'), hd('Net advantage'), hd('OutSystems payback')]].concat(ct.map(function (c) { return [c.label + (c.key === caseKey ? '  (selected)' : ''), M(c.advantage), months(c.osPayback)]; })) },
-      { t: 'text', x: 0.56, y: 4.3, w: 12.21, h: 1.6, inset: 0, paras: [
-        { t: tt('ODC + Sentry (PaaS) includes compliance-grade security, so the alternative is charged the equivalent security and certification cost it would need ({amt} a year when required). Plain PaaS is compared with base security. Self-managed adds the infrastructure and operating people the organisation provides.', { amt: MS(E.assureAnnual(state, 'alt')) }), size: 12, color: C0.muted, after: 8 },
-        { t: caseWords() + ' ' + tt('Placeholder percentages.'), size: 12, color: C0.muted }] }];
-    slides.push({ layout: 'content', title: 'Configurations and confidence', items: ci, footer1: f1t, footer2: f2t });
+    // the OutSystems configuration: one by default (and whether it is high assurance), all of them only when the assessment asks for it
+    var hc = E.hostingCompare(state), allCfg = state.deckConfigs === 'all', hd = function (t, al) { return { t: t, bold: true, fill: C0.panel, align: al || 'r', size: 12 }; };
+    var curCfg = CFG_ROWS.filter(function (c) { return c[0] === cfgKey(); })[0], cfgRows = allCfg ? CFG_ROWS : [curCfg], assuredKey = function (k) { return k === 'paas-sentry' || k === 'self-diy'; };
+    var ci = [{ t: 'table', x: 0.56, y: 1.55, colW: [4.2, 2.3, 2.8, 2.91], rowH: 0.42, size: 12, rows: [[hd('', 'l'), hd(tt('High assurance')), hd(tt('Net advantage')), hd(tt('Running cost'))]].concat(cfgRows.map(function (c) {
+        return [{ t: c[1] + (allCfg && c[0] === cfgKey() ? '  (' + tt('selected') + ')' : ''), size: 12, align: 'l', bold: !allCfg }, { t: assuredKey(c[0]) ? tt('yes') : tt('no'), size: 12, align: 'r' }, { t: M(hc[c[2]].advantage), size: 12, align: 'r' }, { t: M(hc[c[2]].ongoing), size: 12, align: 'r' }]; })) },
+      { t: 'text', x: 0.56, y: 1.55 + 0.42 * (cfgRows.length + 1) + 0.3, w: 12.21, h: 1.4, inset: 0, paras: [
+        { t: tt('ODC + Sentry (PaaS) includes compliance-grade security, so the alternative is charged the equivalent security and certification cost it would need ({amt} a year when required). Plain PaaS is compared with base security. Self-managed adds the infrastructure and operating people the organisation provides.', { amt: MS(E.assureAnnual(state, 'alt')) }), size: 12, color: C0.muted, after: 8 }] }];
+    slides.push({ layout: 'content', title: allCfg ? tt('OutSystems configurations') : tt('OutSystems configuration'), items: ci, footer1: f1t, footer2: f2t });
     // basis
     var hostName = CFG_ROWS.filter(function (c) { return c[0] === cfgKey(); })[0][1];
     var pl = E.projectList(state), left = [['Organisation', org || 'Example (not named)'], ['Compared against', alt], ['Applications', String(pl.length)], ['Months to deliver the portfolio', String(state.deliveryMonths)],
@@ -3834,7 +3854,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     DK.fit({ slides: slides });   // text that does not fit is set smaller
     return { slides: slides, jobs: jobs, images: images };
   }
-  function deckSpecInView() { return inView(function () { var was = [cbBasis, bauPart]; cbBasis = 'sum'; bauPart = 'all'; try { var defs = chartDefs(), charts = defs.filter(function (d) { return d.id !== 'summary'; }); return deckSpec(charts); } finally { cbBasis = was[0]; bauPart = was[1]; } }); }   // the charts and slides are drawn for the scenario in view
+  function deckSpecInView() { return inView(function () { var run = function () { var was = [cbBasis, bauPart]; cbBasis = 'sum'; bauPart = 'all'; try { var defs = chartDefs(), charts = defs.filter(function (d) { return d.id !== 'summary'; }); return deckSpec(charts); } finally { cbBasis = was[0]; bauPart = was[1]; } }; return rmRuns && baseState ? atScenario('roadmap', run) : run(); }); }   // with a roadmap the slides carry the whole portfolio, with the initial applications on their own beside it   // the charts and slides are drawn for the scenario in view
   if (window.__AVA_TESTING) window.__avaTest = { deckSpec: deckSpecInView, edit: function (fn) { fn(state); recalc(); } };
   var deckWarn = [];
   function deckBytes() {
