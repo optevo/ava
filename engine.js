@@ -247,7 +247,7 @@
       /* AI tokens. spend = what the alternative's build uses per application (US$100,000: agent-assisted design, build, test and review across a portfolio, well above the
        * published per-developer averages, since organisations report token costs as a real and growing line); runPct = the yearly spend after go-live as a % of that, for
        * AI-assisted fixes and changes and any model use inside the applications; saving = how much less OutSystems uses (25%: no source, so kept modest). Judgements to replace with measured figures. */
-      tokens: { spend: 100000, runPct: 40, saving: 25, osSpend: 75000 },   // osSpend: OutSystems' own build-token spend per application, used against the status quo (the same as spend less the saving, so the default case does not change)         // alt build token spend per project; OS % saving
+      tokens: { spend: 100000, runPct: 40, saving: 25, osSpend: 0 },   // osSpend: OutSystems' own build-token spend per application, used only against the status quo, where it starts at nothing (AI tokens belong to a build alternative's story)         // alt build token spend per project; OS % saving
       value: { cost: 900000, risk: 360000, rev: 1500000 }, // seeds the first application's simple value calculators; after that the calculators hold the figures
       stages: {
         design: { alt: 3, os: 3 },
@@ -831,7 +831,7 @@
       if (phase) a.phase = phase; return a;
     };
     s.platform = { alt: 150000, os: 100000, sentry: 15000 }; s.osHosting = 'paas'; s.assurance = { required: false, attest: true };
-    s.tokens.spend = 25000; s.tokens.osSpend = 18750;   // the AI build tokens for a small application: the default (100,000) suits a larger one
+    s.tokens.spend = 25000;   // the AI build tokens for a small application: the default (100,000) suits a larger one
     [0.1, 0.2, 0.1, 0.1, 0.05, 0.05].forEach(function (f, i) { s.opsItems[i].fte = f; });   // the alternative's platform team as part-time shares of its specialists: the lines at 5%
     ['Cloud architects (2 people at 5%)', 'DevOps / site reliability engineers (4 at 5%)', 'Platform testers (2 at 5%)', 'Security experts (2 at 5%)', 'Programme manager (1 at 5%)', 'Agile coach (1 at 5%)'].forEach(function (n, i) { s.opsItems[i].name = n; });
     s.roadmap = { licence: { os: 150000, sentry: 0 } };
@@ -965,7 +965,7 @@
   /* Services the organisation runs whatever the hosting (an identity provider, an APM tool: the infrastructure lines ticked "Also with ODC"). With self-managed ODC
    * they are part of the infrastructure; with PaaS there is no infrastructure, so they are counted with the tooling and services, at the same cost as the alternative's. */
   function externalAnnual(state) {
-    return hasItems(state.infraItems) && !selfHosted(state) ? sumOs(state.infraItems.filter(function (it) { return it.ext; })) : 0;
+    return hasItems(state.infraItems) && !selfHosted(state) && altKind(state) !== 'none' ? sumOs(state.infraItems.filter(function (it) { return it.ext; })) : 0;
   }
   function licenceAnnual(state, ap) {   // the OutSystems licence (and the Sentry uplift) only: the alternative has no platform licence, its tools are tooling
     return ap === 'alt' ? 0 : num(state.platform.os) + sentryUplift(state);
@@ -973,7 +973,8 @@
   /* Tooling and services per year, kept apart from the licence: the alternative's AI tools and toolchain; for OutSystems the share of those it still needs, and the services run whatever the hosting. */
   function toolingAnnual(state, ap) {
     if (ap === 'alt') return hasItems(state.toolItems) ? sumAnnual(state.toolItems) : num(state.platform.alt);
-    return (hasItems(state.toolItems) ? sumOs(state.toolItems) : num(state.osTooling)) + externalAnnual(state) + num(state.platform.success);   // the success plan is a service OutSystems sells with the licence
+    /* Against the status quo there is no alternative toolchain to take a share of: OutSystems' own tooling figure is all there is. */
+    return (hasItems(state.toolItems) && altKind(state) !== 'none' ? sumOs(state.toolItems) : num(state.osTooling)) + externalAnnual(state) + num(state.platform.success);   // the success plan is a service OutSystems sells with the licence
   }
   /* People who run the platform or cloud services, per week at full run. Each line is costed at its own role's rate; OutSystems needs only its share. */
   function opsWeekCost(state, ap, raw) {
