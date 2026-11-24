@@ -3835,15 +3835,16 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     return { layout: 'content', title: title, items: items, footer1: foot || f1t, footer2: f2t };
     };
     var bfA = rmRuns && baseState ? true : false;   // with a roadmap: the answer for the initial applications, and for the whole portfolio
+    var ansInit = null, ansFull = null, cmpSlide = null;   // with a roadmap the slides fall into two parts, each opened by a separator
     if (bfA) {
-      slides.push(atScenario('today', function () { inFacts = true; try { return answerSlide(tt('The answer: initial applications'), f1base + '  ·  ' + tt('Initial applications')); } finally { inFacts = false; } }));
-      slides.push(atScenario('roadmap', function () { inFacts = true; try { return answerSlide(tt('The answer: initial + roadmap'), f1base + '  ·  ' + tt('Initial + roadmap')); } finally { inFacts = false; } }));
+      ansInit = (atScenario('today', function () { inFacts = true; try { return answerSlide(tt('The answer: initial applications'), f1base + '  ·  ' + tt('Initial applications')); } finally { inFacts = false; } }));
+      ansFull = (atScenario('roadmap', function () { inFacts = true; try { return answerSlide(tt('The answer: initial + roadmap'), f1base + '  ·  ' + tt('Initial + roadmap')); } finally { inFacts = false; } }));
     } else slides.push(answerSlide(tt('The answer')));
     var bf = bothFacts();   // with a roadmap: the six figures for today and with the roadmap, side by side
     if (bf) {
       var cellOf = function (txt, o) { return Object.assign({ t: txt }, o); }, hdr = [cellOf('', { align: 'l' }), cellOf(tt('Initial applications'), { align: 'r', bold: true }), cellOf(tt('Initial + roadmap'), { align: 'r', bold: true })];
       var cmpTable = { t: 'table', x: 0.56, y: 1.5, colW: [5.2, 3.5, 3.5], rowH: 0.46, size: 12, rows: [hdr].concat(bf.today.tiles.map(function (tl, i) { return [cellOf(tt(tl.k), { align: 'l', color: C0.muted }), cellOf(tl.v, { align: 'r', bold: true }), cellOf(bf.roadmap.tiles[i].v, { align: 'r', bold: true })]; })) };
-      slides.push({ layout: 'content', title: tt('Initial applications and with the roadmap'), footer1: f1t, footer2: f2t, items: [cmpTable,
+      cmpSlide = ({ layout: 'content', title: tt('Initial applications and with the roadmap'), footer1: f1t, footer2: f2t, items: [cmpTable,
         { t: 'text', x: 0.56, y: 1.5 + DK.tableHeight(cmpTable) + 0.2, w: 12.21, h: 0.6, inset: 0, paras: [{ t: tt('The initial applications against the initial applications plus the roadmap, each compared with the alternative building the same applications. The roadmap needs an extra licence from when it starts.'), size: 11, color: C0.muted }] }] });
     }
     // chart slides
@@ -3889,7 +3890,13 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     // the order of the story: the three cases, costs and earnings (chart, figures, ongoing), payback, advantage, timeline, financials, then how sure and time at each stage
     var order = ['cost', 'payback', 'bridge', 'rmbuild', 'rmadds', 'timeline', 'financials', 'sure', 'stages'], rank = function (id) { var i = order.indexOf(id); return i < 0 ? 99 : i; };
     chartSlides.forEach(function (sl, i) { sl.ix = i; }); chartSlides.sort(function (a, b) { return rank(a.id) - rank(b.id) || a.ix - b.ix; });
-    curSlides.forEach(function (sl) { slides.push(sl); });
+    var separator = function (title, text) { return { layout: 'section', title: title, items: [{ t: 'text', x: 0.8, y: 4.7, w: 11.7, h: 1.1, inset: 0, paras: [{ t: text, size: 16, color: C0.muted }] }] }; };
+    if (ansInit) {
+      slides.push(separator(tt('Initial applications'), tt('The applications delivered first, on their own: what they cost, what they earn and when they pay back.')));
+      slides.push(ansInit); curSlides.forEach(function (sl) { slides.push(sl); });
+      slides.push(separator(tt('Initial + roadmap'), tt('The initial applications and the roadmap together: the whole portfolio, with the roadmap\'s extra licence and delivery cost.')));
+      slides.push(ansFull); if (cmpSlide) slides.push(cmpSlide);
+    }
     slides.push(deckCasesSlide(f1t, f2t, C0, yrs));
     chartSlides.forEach(function (sl) {
       slides.push(sl);
