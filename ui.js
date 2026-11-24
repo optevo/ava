@@ -9,20 +9,14 @@
   var curTab = 'pipeline', prevTab = 'pipeline';
   var chartIdx = 0;
 
-  var ALT_TYPES = [
-    { id: 'code-ai', name: 'AI coding + cloud native' },
-    { id: 'appian', name: 'Appian' },
-    { id: 'pega', name: 'Pega' },
-    { id: 'salesforce', name: 'Salesforce Platform' },
-    { id: 'servicenow', name: 'ServiceNow' },
-    { id: 'power-platform', name: 'Microsoft Power Platform' },
-    { id: 'other', name: 'Other (enter name)' }
-  ];
-  var MONEY_PATHS = ['platform.alt', 'platform.os', 'platform.sentry', 'platform.success', 'infra.alt', 'infra.os', 'tokens.spend', 'value.cost', 'value.risk', 'value.rev', 'deliveryQuote', 'osTooling', 'setup.os.paas', 'setup.os.self', 'setup.alt.hiring', 'setup.alt.build', 'setup.alt.tools', 'skill.levels.experienced.enable', 'skill.levels.mixed.enable', 'skill.levels.newer.enable'];
+  var ALT_TYPES = E.allProfiles(null);   // the built-in alternatives (profiles); an assessment can carry more (state.profiles)
+  var MONEY_PATHS = ['tokens.osSpend', 'platform.alt', 'platform.os', 'platform.sentry', 'platform.success', 'infra.alt', 'infra.os', 'tokens.spend', 'value.cost', 'value.risk', 'value.rev', 'deliveryQuote', 'osTooling', 'setup.os.paas', 'setup.os.self', 'setup.alt.hiring', 'setup.alt.build', 'setup.alt.tools', 'skill.levels.experienced.enable', 'skill.levels.mixed.enable', 'skill.levels.newer.enable'];
 
   var HELP = {
     tileTtp: 'Average time to production::Expected weeks from an approved idea to being live, for one application. It includes queue waits and the repeat reviews that follow a rejection. Build is fast for both approaches, so most of the difference is what happens after it.',
     tileNpv: 'Net present value (NPV) advantage::NPV is the value of future money in today\'s terms: a benefit that arrives next year is worth a little less than the same amount today, so each future year is reduced by the discount rate (usually the organisation\'s cost of capital, set on the Analysis settings tab). This is OutSystems\' NPV (everything it delivers minus everything it costs) less the alternative\'s. Positive means OutSystems leaves the organisation better off by this much over the horizon.',
+    tileNpvSq: 'Net value of doing it::What OutSystems delivers minus what it costs, in today\'s terms (future years reduced by the discount rate), against doing nothing. The value drivers describe what doing nothing costs today, so this is OutSystems\' own case, not a race against another way of building.',
+    tileWait: 'Cost of waiting::The yearly value of the included applications divided by 12: what each month of not doing it costs once they would be live. It excludes the ramp-up and any rise in the cost of doing nothing.',
     tileRoi: 'Return on investment (ROI)::Net value divided by cost over the whole analysis period, before discounting: (total value minus total cost) ÷ total cost. For example 200% means every unit spent returns two units of net value.',
     tilePay: 'Payback period::Months until cumulative value minus cost turns positive and stays positive. Costs come first (building and the platform); value only starts once an application is live, then ramps up.',
     tilePeak: 'Peak cash outlay::The most the organisation is out of pocket, cumulatively, before the programme turns positive. A lower figure means less funding risk.',
@@ -94,8 +88,15 @@
     function overriddenCount(group) { return GROUPS[group].filter(isOverridden).length; }
   function esc(s) { return C.esc(s); }
   /* The alternative as a label in charts, tables and headings: just "Alternative". The chosen name (Compared against) stays in the Context pane and in prose. */
-  function altShort() { return 'Alternative'; }
-  function altLabel() { return state.altName && state.altName.trim() ? state.altName.trim() : 'Alternative'; }
+  /* The alternative OutSystems is compared with. 'Status quo' (nothing is built) is a different kind of comparison from a build alternative, so it is named as such everywhere. */
+  function noAlt() { return E.altKind(state) === 'none'; }
+  function altShort() { return noAlt() ? tt('Status quo') : 'Alternative'; }
+  function altLabel() { var l = E.altLabel(state); return noAlt() ? tt('Status quo (do nothing)') : (state.altName && state.altName.trim() ? state.altName.trim() : (l || 'Alternative')); }
+  /* Show the screens that apply to the alternative in use: a build alternative has a delivery team, platform and pipeline; the status quo has none of them. */
+  function applyAltUi() {
+    document.body.dataset.alt = E.altKind(state);
+    if (noAlt() && ['team', 'infrastructure', 'pipeline'].indexOf(curTab) >= 0) showTab('summary');
+  }
   function f1(x) { return C.f1(x); }
   /* Months to a milestone; with a start date, the month and year it falls in as well. */
   function months(v, week) {
@@ -386,6 +387,24 @@
     list.push(np);
     if (!(num0(state.roadmap && state.roadmap.licence && state.roadmap.licence.os) > 0)) { state.roadmap = state.roadmap || { licence: { os: 0, sentry: 0 } }; state.roadmap.licence = state.roadmap.licence || { os: 0, sentry: 0 }; state.roadmap.licence.os = Math.round(1.5 * num0(state.platform.os) / 5000) * 5000; }
   }
+  /* What OutSystems is compared with, at the top of the inputs and always in view: a build alternative (cloud native, another platform) or the status quo (do nothing). */
+  function compareBox() {
+    var kind = E.altKind(state), prof = E.profileOf(state), q = state.statusQuo || {};
+    var opts = E.allProfiles(state).map(function (a) { return '<option value="' + esc(a.id) + '"' + (a.id === prof.id ? ' selected' : '') + '>' + esc(tt(a.name)) + '</option>'; }).join('');
+    var h = '<div class="cmpbox" data-kind="' + kind + '"><label for="altsel">' + esc(tt('Compared against')) + '</label><select id="altsel" data-special="altType">' + opts + '</select>';
+    if (prof.named) h += '<input type="text" data-text="altName" value="' + esc(state.altName) + '" placeholder="' + esc(tt('Name of the alternative')) + '" aria-label="' + esc(tt('Name of the alternative')) + '">';
+    if (kind === 'none') {
+      var P = E.DRIFT_PRESETS, dopts = [['flat', tt('Flat: no change')], ['typical', tt('Typical: +{n}% a year', { n: P.typical })], ['rising', tt('Rising: +{n}% a year', { n: P.rising })], ['custom', tt('Custom')]].map(function (d) {
+        return '<option value="' + d[0] + '"' + (d[0] === (q.drift || 'flat') ? ' selected' : '') + '>' + esc(d[1]) + '</option>'; }).join('');
+      h += '<p class="note">' + esc(tt('Nothing is built, so the value is what doing nothing costs and OutSystems removes. Today\'s cost comes from the figures on each application.')) + '</p>' +
+        '<div class="row"><label' + C.tip(tt('If we do nothing, the cost gets…'), tt('The manual effort, legacy support and risk exposure that OutSystems would remove do not stay still. Flat is the cautious choice; typical and rising assume the cost grows each year from today, so the saving at go-live is already larger. Treat a rise as an assumption to agree with the customer.')) + '>' + esc(tt('If we do nothing, the cost gets…')) + '</label>' +
+        '<select data-special="sqdrift">' + dopts + '</select></div>' +
+        (q.drift === 'custom' ? '<div class="row"><label>' + esc(tt('Rise per year (%)')) + '</label><input type="number" step="0.5" data-sqcustom="1" value="' + esc(String(q.custom || 0)) + '"></div>' : '') +
+        '<div class="reasons"><b>' + esc(tt('Reasons to act')) + '</b><p class="note" style="margin:2px 0 4px">' + esc(tt('Tick what applies. Each adds a risk figure to the first application, with the question to ask the customer in its note. The amounts are placeholders.')) + '</p>' +
+        E.REASONS.map(function (x) { return '<label class="chk"' + C.tip(tt(x.label), tt(x.ask)) + '><input type="checkbox" data-reason="' + x.id + '"' + (E.reasonOn(state, x.id) ? ' checked' : '') + '> ' + esc(tt(x.label)) + '</label>'; }).join('') + '</div>';
+    } else h += '<p class="note">' + esc(tt('A way of building and running the applications instead: it has its own team, platform, infrastructure and time to production.')) + '</p>';
+    return h + '</div>';
+  }
   function buildKey() {
     var cur = state.currency, opts = '', groups = {};
     R.GEOS.forEach(function (g) {
@@ -393,11 +412,8 @@
         return '<option value="' + r.id + '"' + (r.id === state.country ? ' selected' : '') + '>' + esc(tt(r.name)) + '</option>';
       }).join('') + '</optgroup>';
     });
-    var altOpts = ALT_TYPES.map(function (a) {
-      return '<option value="' + a.id + '"' + (a.id === state.altType ? ' selected' : '') + '>' + a.name + '</option>';
-    }).join('');
 
-    var h = '<div class="ph">Assessment inputs</div>';
+    var h = '<div class="ph">Assessment inputs</div>' + compareBox();
     var choices = R.currencyChoices(state.country);
     if (choices.indexOf(cur) < 0) choices.push(cur);
     var curOpts = choices.map(function (c, i) { return '<option value="' + c + '"' + (c === cur ? ' selected' : '') + '>' + c + ' (' + esc(curSym(c)) + ')</option>'; }).join('');   // just the currency code; the country's own currency is listed first and is the default
@@ -405,9 +421,6 @@
       row('Country', '<select data-special="country">' + opts + '</select>', 'Sets the country\'s own currency and a default hourly cost for each delivery role.') +
       row('Currency', '<select data-special="currency">' + curOpts + '</select>', 'The country\'s own currency (the default), US dollars or euros. Switching converts every amount using a static, indicative conversion table.') +
       (state.currency !== R.byId(state.country).cur ? '<div class="note" style="margin:0 0 6px">' + tt('Amounts are in {sym}, not the country\'s own currency, so the full symbol is always shown.', { sym: esc(curSym()) }) + '</div>' : fullSymDiffers() ? '<label class="chk"' + C.tip('Full currency symbols', 'Show which dollar (or yen) it is, for example A$ instead of $. Amounts in a currency other than the country\'s own always show the full symbol, such as US$.') + '><input type="checkbox" data-fullcur="1"' + (state.fullCurrency ? ' checked' : '') + '> ' + tt('Full symbols ({a} not {b})', { a: esc(nativeSym(true)), b: esc(nativeSym(false)) }) + '</label>' : '') +
-      row('Compared against', '<select data-special="altType">' + altOpts + '</select>', 'What would otherwise be used to build these applications.') +
-      '<div class="row' + (state.altType === 'other' ? '' : ' hidden') + '" id="altNameRow"><label>Name</label>' +
-      '<input type="text" data-text="altName" value="' + esc(state.altName) + '"></div>' +
       more('rates', 'The hourly cost of each role in the country\'s own currency, viewable and changeable (Rates tab).'));
     var money = ' ' + tt('Amounts are per annum, in {cur}, the currency chosen above.', { cur: cur });
     var hInit = fold('init', 'Initial application(s)', 'fs-init', blockHtml('initial'), true);
@@ -486,9 +499,10 @@
       pairRow('Enhancements (% of build cost per year)', sp('maint.enh'), 1, 0, 200, scope) +
       '<div class="note">' + tt('Looking after an application once it is live: fixing faults (break/fix) and making the changes the business asks for (enhancements), each as a share of its build cost every year. OutSystems is cheaper on both.') + '</div>');
     cards += card('AI tokens',
-      (d ? '' : row('Token spend per app <i>' + esc(curSym()) + '</i>', inp('tokens.spend', 500, 0, undefined, scope), 'Current or projected AI build-token spend per application for the alternative.')) +
+      (noAlt() ? row('OutSystems token spend per app <i>' + esc(curSym()) + '</i>', inp('tokens.osSpend', 500, 0, undefined, scope), 'AI build-token spend per application with OutSystems. There is no alternative to measure it against, so it is its own figure.') : '') +
+      (d || noAlt() ? '' : row('Token spend per app <i>' + esc(curSym()) + '</i>', inp('tokens.spend', 500, 0, undefined, scope), 'Current or projected AI build-token spend per application for the alternative.')) +
       row('After go-live (% of build token spend a year)', inp('tokens.runPct', 5, 0, 300, scope), 'AI tokens keep being used after go-live, for AI-assisted fixes and changes and for any model use inside the applications. This is the yearly spend as a share of the build spend. Placeholder to replace with measured figures.') +
-      row('Token saving (%)', inp('tokens.saving', 1, 0, 100, scope), 'Placeholder (25%) to be validated, for example in a proof of concept.') +
+      (noAlt() ? '' : row('Token saving (%)', inp('tokens.saving', 1, 0, 100, scope), 'Placeholder (25%) to be validated, for example in a proof of concept.')) +
       '<div class="note">Model-driven development is more constrained, so it should need fewer tokens. Treat the saving as an assumption until measured.</div>');
     if (!d) cards += card('OutSystems infrastructure', row('Infrastructure / yr <i>' + esc(curSym()) + '</i>', inp('infra.os', 5000, 0), 'Only if OutSystems is self-managed. OutSystems PaaS includes the infrastructure, so this is normally zero.') +
       '<div class="note">Normally zero: OutSystems PaaS includes the hosting.</div>');
@@ -1485,7 +1499,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       ['Revenue per unit', 'Average annual revenue per customer, or per transaction.'], ['Uplift %', 'The percentage change in revenue per unit that the application brings. Typically 1 to 5%.'], ['Margin %', 'Contribution margin: only this share of extra revenue is profit, and profit is what counts as value. Often 20 to 40%.'],
       ['Profit / year', 'Units × revenue per unit × uplift × margin. Hover for the revenue before margin.'], ['', '']],
     handling: [['What is handled', 'What the transactions are, for example claims, applications or invoices.'], ['Role group', 'The kind of people who handle them. The salary starts from a typical figure for this group in the country; change it for a specific role.'], ['Transactions / year', 'How many transactions are handled in a year, once the application is live.'],
-      ['Minutes saved each', 'Handling time saved on each transaction, in minutes.'], ['Salary', 'Typical annual salary for the role. Starts from the country baseline (a placeholder); type over it to use the real one.'], ['Loaded ×', 'Employee cost divided by salary: pension or superannuation, payroll taxes, leave, equipment and space. Commonly 1.2 to 1.5.'],
+      ['Minutes saved each', 'Handling time saved on each transaction, in minutes.'], ['Minutes each today', 'Optional. How long each transaction takes now, in minutes. With it the cost of the current way is shown (volume × minutes × pay) next to the saving, which is easier to agree with the customer than the saving alone.'], ['Salary', 'Typical annual salary for the role. Starts from the country baseline (a placeholder); type over it to use the real one.'], ['Loaded ×', 'Employee cost divided by salary: pension or superannuation, payroll taxes, leave, equipment and space. Commonly 1.2 to 1.5.'],
       ['Counts as', 'Cash saving: handling cost that is actually avoided (overtime, contractors, backfill). Freed capacity: time that is released but redeployed (a soft benefit, counted only in part).'], ['Realised %', 'For freed capacity: the share of the time that turns into real value.'], ['Per year', 'The yearly value of this line, once the application is live.'], ['', '']],
     deflect: [['What is deflected', 'The kind of request, for example status calls, policy changes or password resets.'], ['Requests / year', 'How many of these requests arrive in a year.'], ['Self-service %', 'The share of those requests that customers or staff now handle themselves, with no person involved.'],
       ['Cost per request', 'What it costs to handle one request today, including the person\'s time and the channel.'], ['Per year', 'The yearly cost avoided, counted as a hard saving.'], ['', '']],
@@ -1518,7 +1532,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     if (l.type === 'labour') {
       f = [bsel(P('group'), R.ROLE_GROUPS.map(function (g) { return [g.key, g.label]; }), l.group), num('users'), num('salary'), num('mult', 0.05), num('saved', 5, 100), num('adopt', 5, 100), bsel(P('how'), HOW, l.how), l.how === 'capacity' ? num('realise', 5, 100) : null];
     } else if (l.type === 'handling') {
-      f = [btxt(P('what'), l.what, 'What is handled'), bsel(P('group'), R.ROLE_GROUPS.map(function (g) { return [g.key, g.label]; }), l.group), num('volume'), num('mins', 0.5), num('salary'), num('mult', 0.05), bsel(P('how'), HOW, l.how), l.how === 'capacity' ? num('realise', 5, 100) : null];
+      f = [btxt(P('what'), l.what, 'What is handled'), bsel(P('group'), R.ROLE_GROUPS.map(function (g) { return [g.key, g.label]; }), l.group), num('volume'), num('mins', 0.5), num('now', 0.5), num('salary'), num('mult', 0.05), bsel(P('how'), HOW, l.how), l.how === 'capacity' ? num('realise', 5, 100) : null];
     } else if (l.type === 'deflect') {
       f = [btxt(P('what'), l.what, 'What is deflected'), num('volume'), num('share', 5, 100), num('per', 1)];
     } else if (l.type === 'completion') {
@@ -1550,6 +1564,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     return '<div class="bl2 t-' + l.type + '" data-line="' + key + '"><div class="bty">' + typeCell + '</div><div class="bfs">' + fields + '</div><div class="bamt">' + amount + '</div>' +
       '<button type="button" class="b bnb' + (has ? ' has' : '') + '" data-note="' + key + '"' + (has ? C.tip(tt('Why this figure'), String(l.note)) : C.tip(tt('Why this figure'), tt('Add a note: where the figure came from, or who confirmed it.'))) + ' aria-label="' + esc(tt('Why this figure')) + '">✎</button>' +
       '<button type="button" class="b" data-act="bl-del" data-i="' + i + '" data-j="' + j + '" title="' + esc(tt('Remove this line')) + '">×</button>' +
+      '<div class="bmeta"><span class="btoday" id="bt-' + key + '"></span><label class="bsrc"' + C.tip(tt('How sure we are'), tt('Where this figure came from. It is used to rank what to check with the customer first (see How sure are we). Starting figures worked out from the size of the organisation count as assumptions until you say otherwise.')) + '>' + esc(tt('How sure we are')) + ' ' +
+        bsel(P('src'), E.SRC_KINDS.map(function (o) { return [o[0], tt(o[1])]; }), l.src || 'assumption') + '</label></div>' +
       '<div class="bnotebox" id="nb-' + key + '"' + (has ? '' : ' hidden') + '><textarea rows="2" data-tpath="' + P('note') + '" placeholder="' + esc(tt('Why: the justification for this line (source, who confirmed it)')) + '">' + esc(l.note || '') + '</textarea></div></div>';
   }
   function builderPanel(i, p) {
@@ -1583,6 +1599,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       p.build.forEach(function (l, j) {
         var v = t.lines[j], tot = v.cost + v.rev + v.risk;
         set('bl-' + i + '-' + j, M(tot)); sub[l.type] = (sub[l.type] || 0) + tot;
+        var td = E.lineToday(l);   // what the current way costs a year, so the conversation can be about the volume and time first and the saving second
+        set('bt-' + i + '-' + j, td ? tt('Today: {today} a year → saving {pct}% = {saved}', { today: M(td.today), pct: Math.round(td.share * 100), saved: M(td.saved) }) : (l.type === 'handling' ? tt('Add the minutes each takes today to see what it costs now.') : ''));
         var sv = document.querySelector('input[data-path="' + bpath(i, j, 'saved') + '"]'); if (sv) sv.classList.toggle('warnin', Number(l.saved) > 40);
         var us = document.querySelector('input[data-path="' + bpath(i, j, 'users') + '"]'); if (us) us.classList.toggle('warnin', num0(state.org && state.org.employees) > 0 && Number(l.users) > num0(state.org.employees));   // more users than the organisation has people
         var rb = $('bl-' + i + '-' + j); if (rb && rb.parentNode && l.type === 'revenue') rb.parentNode.setAttribute('data-tip', tt('Revenue before margin') + '::' + tt('{rev} a year; {profit} is the profit.', { rev: M(num0(l.units) * num0(l.per) * num0(l.uplift) / 100), profit: M(tot) }));
@@ -2092,10 +2110,14 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       buildProjects(); recalc();
     }
     else if (sp === 'altType') {
-      state.altType = t.value;
-      var a = ALT_TYPES.filter(function (x) { return x.id === t.value; })[0];
-      state.altName = t.value === 'other' ? '' : (a ? a.name : '');
-      buildKey(); recalc();
+      E.switchAlt(state, t.value, '');   // keeps each build alternative's own inputs, so switching back loses nothing
+      applyAltUi(); buildInputs(); recalc();
+    } else if (sp === 'sqdrift') {
+      state.statusQuo = state.statusQuo || {}; state.statusQuo.drift = t.value; buildKey(); recalc();
+    } else if (t.dataset && t.dataset.reason) {
+      E.setReason(state, t.dataset.reason, t.checked); buildKey(); buildProjects(); recalc();
+    } else if (t.dataset && t.dataset.sqcustom !== undefined) {
+      state.statusQuo = state.statusQuo || {}; state.statusQuo.custom = parseFloat(t.value) || 0; recalc();
     } else if (t.dataset && t.dataset.setupinc) {
       state.setup.mode = t.checked ? 'included' : 'absorbed'; buildKey(); buildInfra(); recalc();
     } else if (sp === 'osHosting') {
@@ -2167,7 +2189,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var values = r.bridge.filter(function (b) { return b.kind !== 'cost'; }).sort(function (x, y) { return y.delta - x.delta; });
     var items = costs.concat(values).filter(function (b) { return Math.abs(b.delta) > 0.5; }).map(function (b) {   // a line with no difference is left out
       var tipText;
-      if (b.kind === 'cost') {
+      if (r.none) tipText = b.kind === 'cost' ? tt('In present value, OutSystems costs {amt} over {yrs} years on this line.', { amt: M(Math.abs(b.delta)), yrs: years }) : tt('In present value, OutSystems delivers {amt} on this line over {yrs} years: what doing nothing would keep costing or forgo.', { amt: M(Math.abs(b.delta)), yrs: years });
+      else if (b.kind === 'cost') {
         tipText = tt(b.delta >= 0 ? 'In present-value terms, OutSystems spends {amt} less on this than {alt} over {yrs} years.' : 'In present-value terms, OutSystems spends {amt} more on this than {alt} over {yrs} years.', { amt: M(Math.abs(b.delta)), alt: alt, yrs: years }) + '\n' +
           (COST_HELP[b.key.indexOf('c_ops_') === 0 ? 'ops' : b.key.replace('c_', '')] || '');
       } else {
@@ -2177,7 +2200,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       return { label: b.label, delta: b.delta, hard: b.hard, tip: tipText, go: bgo };
     });
     return C.waterfall({
-      start: { label: 'Alternative NPV', value: r.alt.npv, tip: tt('Present value of everything {alt} delivers minus everything it costs over {n} years.', { alt: alt, n: years }) },
+      start: r.none ? { label: 'Doing nothing', value: 0, tip: tt('The baseline: nothing is built or spent, so the value drivers measure what doing nothing costs, and the starting point is zero.') } : { label: 'Alternative NPV', value: r.alt.npv, tip: tt('Present value of everything {alt} delivers minus everything it costs over {n} years.', { alt: alt, n: years }) },
       end: { label: 'OutSystems NPV', value: r.os.npv, tip: 'Same measure for OutSystems. The difference from the left-hand bar is the net value advantage.' },
       items: items, label: 'Value bridge', range: bridgeRange()
     });
@@ -2202,16 +2225,15 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       dateAt: function (w) { return E.dateAtWeek(state, w); }, showMonth: showMonth,
       weeks: r.os.W,
       series: [
-        { name: 'OutSystems', color: 'var(--os)', data: r.os.cum, width: 3 },
-        { name: alt, color: 'var(--alt)', data: r.alt.cum, dash: true, width: 2.5 }
-      ],
+        { name: 'OutSystems', color: 'var(--os)', data: r.os.cum, width: 3 }
+      ].concat(r.none ? [] : [{ name: alt, color: 'var(--alt)', data: r.alt.cum, dash: true, width: 2.5 }]),   // doing nothing is the zero line itself
       markers: [
         { week: r.os.paybackWeek, label: 'OutSystems payback ' + months(r.os.paybackMonths, r.os.paybackWeek), color: 'var(--os)', row: 0,
           tip: 'Cumulative value minus cost turns positive here and stays positive.' },
-        { week: r.alt.paybackWeek, label: alt + ' payback ' + months(r.alt.paybackMonths, r.alt.paybackWeek), color: 'var(--alt)', row: 1,
+        r.none ? null : { week: r.alt.paybackWeek, label: alt + ' payback ' + months(r.alt.paybackMonths, r.alt.paybackWeek), color: 'var(--alt)', row: 1,
           tip: 'Cumulative value minus cost turns positive here and stays positive.' }
       ],
-      points: [lowPoint(r.os.cum, 'OutSystems', 'var(--os)', 0), lowPoint(r.alt.cum, alt, 'var(--alt)', 1)].filter(Boolean),
+      points: [lowPoint(r.os.cum, 'OutSystems', 'var(--os)', 0), r.none ? null : lowPoint(r.alt.cum, alt, 'var(--alt)', 1)].filter(Boolean),
       label: 'Cumulative net benefit'
     });
   }
@@ -2233,14 +2255,14 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var ben = function (src) { var o = {}; E.DRIVERS.forEach(function (d) { o['b_' + d.key] = src[d.key]; }); return o; };
     return C.stacked({
       cats: cats, shareOf: 'costs (or benefits) over the horizon',
-      groups: [{ label: 'Costs', label2: alt, values: r.alt.sumCost }, { label: 'Benefits', label2: alt, values: ben(r.alt.sumVal) },
-        { label: 'Costs', label2: 'OutSystems', values: r.os.sumCost }, { label: 'Benefits', label2: 'OutSystems', values: ben(r.os.sumVal) }],
+      groups: (r.none ? [] : [{ label: 'Costs', label2: alt, values: r.alt.sumCost }, { label: 'Benefits', label2: alt, values: ben(r.alt.sumVal) }]).concat(
+        [{ label: 'Costs', label2: 'OutSystems', values: r.os.sumCost }, { label: 'Benefits', label2: 'OutSystems', values: ben(r.os.sumVal) }]),   // against the status quo there is nothing on the other side to draw
       label: 'Costs and benefits', height: 330
     });
   }
   function svgGantt() {
     var r = res;
-    return C.gantt({ dateAt: function (w) { return E.dateAtWeek(state, w); }, showDate: showDate, showMonth: showMonth, go: appGo, alt: r.alt.projects, os: r.os.projects, weeks: r.os.W, altLabel: altShort(), label: 'Project timeline' });
+    return C.gantt({ none: r.none, dateAt: function (w) { return E.dateAtWeek(state, w); }, showDate: showDate, showMonth: showMonth, go: appGo, alt: r.alt.projects, os: r.os.projects, weeks: r.os.W, altLabel: altShort(), label: 'Project timeline' });
   }
 
 
@@ -2310,7 +2332,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     rows += line('Total costs', aCost, oCost, false, null, 'tot');
     rows += line('Net benefit', aVal - aCost, oVal - oCost, true, null, 'tot');
     var head = '<tr><th></th><th>' + alt + '</th><th>OutSystems</th><th>OutSystems advantage</th></tr>';
-    return '<div class="cbwrap"><div class="finwrap"><table class="fin cbt">' + head + rows + '</table></div></div>';
+    return '<div class="cbwrap"><div class="finwrap"><table class="fin cbt' + (res.none ? ' nosq' : '') + '">' + head + rows + '</table></div></div>';
   }
 
   /* Each application's go-live and annual value: what the run-rate annual value tile adds up. */
@@ -2322,10 +2344,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       var p = r.os.projects[i], q = r.alt.projects[i], live = p.goLive < W, go = appGo(i), nm = p.name || (tt('Application') + ' ' + (i + 1));
       if (live) { rr += p.annualIncluded; n++; }
       rows += '<tr' + (live ? '' : ' class="off"') + '>' + (go ? '<td data-go="' + esc(go) + '"' + C.tip(nm, 'Click to go to where this is edited.') + '><span class="golink">' + esc(nm) + '</span></td>' : '<td>' + esc(nm) + '</td>') +
-        cell(p.annualIncluded) + '<td>' + wk(p) + '</td><td>' + wk(q) + '</td><td>' + (live ? tt('yes') : tt('no')) + '</td></tr>';
+        cell(p.annualIncluded) + '<td>' + wk(p) + '</td>' + (r.none ? '' : '<td>' + wk(q) + '</td>') + '<td>' + (live ? tt('yes') : tt('no')) + '</td></tr>';
     }
-    rows += '<tr class="tot"><td' + C.tip(tt('Run-rate annual value (OutSystems)'), tt('The yearly value of the OutSystems applications that are live within the analysis period, added up. Applications still waiting to go live are not counted.')) + '>' + tt('Run-rate annual value (OutSystems)') + '</td>' + cell(rr) + '<td colspan="2">' + tt('{live} of {n} applications live', { live: n, n: r.os.projects.length }) + '</td><td></td></tr>';
-    return '<div class="cbwrap"><div class="finwrap"><table class="fin cbt"><tr><th></th><th' + C.tip(tt('Annual value'), tt('The yearly value the application earns once it is fully live: cost savings, risk reduction and revenue uplift. It is the same for both approaches; only the start date differs.')) + '>' + tt('Annual value') + '</th><th' + C.tip(tt('OutSystems goes live'), tt('The week OutSystems delivers this application into production.')) + '>' + tt('OutSystems goes live') + '</th><th' + C.tip(tt('{alt} goes live', { alt: altShort() }), tt('The week the alternative delivers this application into production.')) + '>' + tt('{alt} goes live', { alt: alt }) + '</th><th' + C.tip(tt('In the run-rate'), tt('Yes when the application is live within the analysis period, so its annual value counts towards the run-rate. Later ones are dimmed and not counted.')) + '>' + tt('In the run-rate') + '</th></tr>' + rows + '</table></div>' +
+    rows += '<tr class="tot"><td' + C.tip(tt('Run-rate annual value (OutSystems)'), tt('The yearly value of the OutSystems applications that are live within the analysis period, added up. Applications still waiting to go live are not counted.')) + '>' + tt('Run-rate annual value (OutSystems)') + '</td>' + cell(rr) + '<td colspan="' + (r.none ? 2 : 2) + '">' + tt('{live} of {n} applications live', { live: n, n: r.os.projects.length }) + '</td><td></td></tr>';
+    return '<div class="cbwrap"><div class="finwrap"><table class="fin cbt"><tr><th></th><th' + C.tip(tt('Annual value'), tt('The yearly value the application earns once it is fully live: cost savings, risk reduction and revenue uplift. It is the same for both approaches; only the start date differs.')) + '>' + tt('Annual value') + '</th><th' + C.tip(tt('OutSystems goes live'), tt('The week OutSystems delivers this application into production.')) + '>' + tt('OutSystems goes live') + '</th>' + (r.none ? '' : '<th' + C.tip(tt('{alt} goes live', { alt: altShort() }), tt('The week the alternative delivers this application into production.')) + '>' + tt('{alt} goes live', { alt: alt }) + '</th>') + '<th' + C.tip(tt('In the run-rate'), tt('Yes when the application is live within the analysis period, so its annual value counts towards the run-rate. Later ones are dimmed and not counted.')) + '>' + tt('In the run-rate') + '</th></tr>' + rows + '</table></div>' +
       '<div class="note">' + tt('The run-rate annual value is the yearly value of the applications that are live within the period. Applications still waiting to go live are dimmed and not counted.') + '</div></div>';
   }
 
@@ -2345,6 +2367,9 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       } else if (it.key === 'value') {
         out.push(it.at === null ? tt('The business value does not change whether OutSystems stays ahead.')
           : it.at <= 0 ? tt('OutSystems stays ahead even if none of the business value arrives.') : it.at >= 5 ? tt('OutSystems is only ahead with far more business value than claimed.') : tt('At least {at} of the business value has to arrive (this scenario assumes {now}).', { at: pc(it.at), now: pc(it.now) }));
+      } else if (noAlt()) {   // the speed row against the status quo: how much of the claimed delivery speed has to arrive
+        out.push(it.at === null ? tt('How quickly OutSystems delivers does not change whether it is worth doing.')
+          : it.at <= 0 ? tt('It is worth doing even if none of the claimed delivery speed arrives.') : it.at >= 5 ? tt('It is only worth doing with far faster delivery than claimed.') : tt('At least {at} of the claimed delivery speed has to arrive.', { at: pc(it.at) }));
       } else {
         out.push(it.at === null ? tt('How much faster OutSystems is does not change whether it stays ahead.')
           : it.at <= 0 ? tt('OutSystems stays ahead even if none of the claimed improvement arrives.') : it.at >= 5 ? tt('OutSystems is only ahead with far more improvement than claimed.') : tt('At least {at} of the claimed improvement over the alternative has to arrive (this scenario assumes {now}).', { at: pc(it.at), now: pc(it.now) }));
@@ -2352,10 +2377,22 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     });
     return out;
   }
+  /* What to check with the customer first: the calculator lines that carry the most value on the weakest backing. A few questions settle most of the doubt. */
+  function firmUpHtml() {
+    var fu = E.firmUp(state), MS = C.moneyShort, rows = fu.rows.slice(0, 5), srcName = {};
+    E.SRC_KINDS.forEach(function (k) { srcName[k[0]] = tt(k[1]); });
+    if (!fu.rows.length && !fu.total) return '';
+    var body = rows.length ? '<table class="evt"><tr><th>' + esc(tt('Figure')) + '</th><th class="num">' + esc(tt('Value a year')) + '</th><th>' + esc(tt('How sure we are')) + '</th><th class="num">' + esc(tt('Doubt settled')) + '</th></tr>' +
+      rows.map(function (r) {
+        var nm = (r.appName ? r.appName + ' › ' : '') + (r.what || calcName(r.type)), go = bpath(r.app, r.line, 'volume');
+        return '<tr><td' + (r.today ? C.tip(nm, tt('Today: {today} a year → saving {pct}%', { today: C.money(r.today.today), pct: Math.round(r.today.share * 100) })) : '') + '>' + esc(nm) + '</td><td class="num">' + MS(r.value) + '</td><td>' + esc(srcName[r.src]) + '</td><td class="num">' + Math.round(r.cumulative * 100) + '%</td></tr>';
+      }).join('') + '</table>' : '<p class="note">' + esc(tt('Every figure is confirmed by the customer.')) + '</p>';
+    return '<div class="box" style="margin-top:10px"><h4>' + tt('What to check first') + '</h4><p class="note" style="margin:0 0 6px">' +
+      esc(tt('{pct}% of the value is confirmed by the customer. These figures carry the most value on the weakest backing; the last column is the share of all the doubt settled once this one and those above it are firm.', { pct: Math.round(fu.confirmedShare * 100) })) + '</p>' + body + '</div>';
+  }
   function sureHtml() {
     return '<div class="sens"><label for="sensrange" id="sensv">' + tt('Move each assumption by ±{n}%', { n: sensPct }) + '</label><input type="range" id="sensrange" min="5" max="50" step="5" value="' + sensPct + '" data-sens="1"></div>' +
-      '<div class="box" style="margin-top:10px"><h4>' + tt('What would have to be true') + '</h4><ul style="margin:6px 0 0 18px;padding:0">' + mustBeTrueLines().map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul></div>' +
-      '';
+      '<div class="box" style="margin-top:10px"><h4>' + tt('What would have to be true') + '</h4><ul style="margin:6px 0 0 18px;padding:0">' + mustBeTrueLines().map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul></div>' + firmUpHtml();
   }
   function sureTake() {
     var s = E.sensitivity(state, sensPct), a = s.rows[0], b = s.rows[1], MS = C.moneyShort;
@@ -2375,10 +2412,12 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     pl.forEach(function (p) { add(G1, tt('{name}: value per year', { name: p.name }), M(p.value.cost + p.value.rev + p.value.risk), 'value'); });
     add(G2, tt('Analysis period'), tt('{n} years', { n: state.horizon }), 'horizon');
     add(G2, tt('Discount rate'), state.rate + '%', 'rate');
-    add(G2, tt('Developers the alternative needs'), '×' + state.altDevFactor, 'altDevFactor');
-    add(G2, tt('Alternative yearly run cost'), tt('{n}% of build cost', { n: E.maintPct(state, 'alt') }), 'run.alt');
-    add(G2, tt('Alternative operating team'), tt('{n} people', { n: f1(E.opsFteTotal(state, 'alt')) }), 'opsFte.alt');
-    add(G2, tt('AI token saving'), state.tokens.saving + '%', 'tokens.saving');
+    if (!noAlt()) {   // the status quo has no team, run cost or AI spend of its own
+      add(G2, tt('Developers the alternative needs'), '×' + state.altDevFactor, 'altDevFactor');
+      add(G2, tt('Alternative yearly run cost'), tt('{n}% of build cost', { n: E.maintPct(state, 'alt') }), 'run.alt');
+      add(G2, tt('Alternative operating team'), tt('{n} people', { n: f1(E.opsFteTotal(state, 'alt')) }), 'opsFte.alt');
+      add(G2, tt('AI token saving'), state.tokens.saving + '%', 'tokens.saving');
+    } else if (E.driftPct(state)) add(G2, tt('Yearly rise in the cost of doing nothing'), E.driftPct(state) + '%', 'statusQuo.drift');
     var cs = E.caseOf(state); add(G2, tt('Scenario'), cs ? tt(E.casesOf(state)[cs].label) : tt('Custom'), 'case');
     return rows;
   }
@@ -2424,7 +2463,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var host = $('cfg-onepage'); if (!host || !res) return;
     var f = summaryFacts(), M = C.moneyShort, r = res, sn = E.sensitivity(state, 25), named = state.company && state.company.trim();
     var tiles = '<div class="tiles t3">' + f.tiles.filter(function (t) { return t.tip !== 'tileCod'; }).map(function (t) { return tile(t.k, t.v, t.s, t.tip); }).join('') + '</div>';
-    var cb = '<table class="evt"><tr><th></th><th class="num">' + esc(altShort()) + '</th><th class="num">OutSystems</th></tr>' +
+    var cb = r.none
+      ? '<table class="evt"><tr><th></th><th class="num">OutSystems</th></tr><tr><td>' + tt('Total benefits') + '</td><td class="num">' + M(r.os.totalValue) + '</td></tr><tr><td>' + tt('Total costs') + '</td><td class="num">' + M(r.os.totalCost) + '</td></tr>' +
+        '<tr><td><b>' + tt('Net benefit') + '</b></td><td class="num"><b>' + M(r.os.totalValue - r.os.totalCost) + '</b></td></tr></table>'
+      : '<table class="evt"><tr><th></th><th class="num">' + esc(altShort()) + '</th><th class="num">OutSystems</th></tr>' +
       '<tr><td>' + tt('Total benefits') + '</td><td class="num">' + M(r.alt.totalValue) + '</td><td class="num">' + M(r.os.totalValue) + '</td></tr>' +
       '<tr><td>' + tt('Total costs') + '</td><td class="num">' + M(r.alt.totalCost) + '</td><td class="num">' + M(r.os.totalCost) + '</td></tr>' +
       '<tr><td><b>' + tt('Net benefit') + '</b></td><td class="num"><b>' + M(r.alt.totalValue - r.alt.totalCost) + '</b></td><td class="num"><b>' + M(r.os.totalValue - r.os.totalCost) + '</b></td></tr></table>';
@@ -2498,6 +2540,22 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
         read: 'Start with the grey bar: the net present value of OutSystems for the initial applications. Green is value the roadmap adds; red is what it costs, shown separately for the extra licence and for everything else. The last bar is OutSystems with the roadmap. The roadmap is worth doing when the green outweighs the red.',
         take: tt('The roadmap adds {value} of value and {other} of delivery and running cost, plus {lic} of extra licence: a net {npv} over {yrs} years, in present value.', { value: MS(AD.pvValue), other: MS(AD.pvOther), lic: MS(AD.pvLicence), npv: MS(AD.npv), yrs: state.horizon }) });
     }
+    if (r.none) {   // the words for a comparison with doing nothing (the charts above already leave out the second way of building)
+      var SQ = {
+        summary: { cap: 'The headline figures for this assessment: what OutSystems delivers against doing nothing. Hover a card for how it is worked out.',
+          read: 'Each card is OutSystems\' own case against doing nothing, so there is no second way of building to race it against. Net value of doing it is everything OutSystems delivers minus everything it costs, in today\'s terms. The value is what doing nothing costs today, or keeps costing, that OutSystems removes. Cost of waiting is what each month of not doing it costs. Return on investment and payback show how much and how fast it earns back what it costs. Peak cash outlay is the most cash out before it turns positive.' },
+        cost: { cap: 'OutSystems\' costs and the benefits it earns over the horizon, on one scale, then line by line. Benefits count only once an application is live. Click a segment or a line to edit where it comes from.',
+          read: 'The left column is what OutSystems costs and the right column is the benefit it earns, on the same scale, so the gap between them is the net benefit. Benefits only start once an application is live. The table below adds each line, as a total over the period or in present value.',
+          take: tt('Over {yrs} years OutSystems earns {earn} and costs {cost}, a net {net}. The largest cost is {biggest}.', { yrs: state.horizon, earn: MS(r.os.totalValue), cost: MS(r.os.totalCost), net: MS(r.os.totalValue - r.os.totalCost), biggest: tt(biggest.label).toLowerCase() }) },
+        bridge: { title: 'Where the value comes from', cap: 'From doing nothing to OutSystems\' net value: what it costs first, then the value it delivers. Every bar adds up.',
+          read: 'Start with the grey bar: doing nothing, which is the baseline of zero. Red bars are what OutSystems costs, and green bars are the value it delivers, so you see the costs before the gains. The blue bar at the bottom is OutSystems\' net present value. Lighter bars are soft benefits that depend on the estimate being accepted.' },
+        timeline: { cap: 'When each application starts and goes live with OutSystems.',
+          read: 'Each application has a bar. The solid part is active team work. The lighter part is time in review, rework and queues. The diamond marks go-live. Doing nothing never delivers anything, so it has no bar.' },
+        financials: { cap: 'Value, cost, net and cumulative net for OutSystems, by year. Hover a figure for the exact amount.' }
+      };
+      defsList.forEach(function (d) { var o = SQ[d.id]; if (o) Object.keys(o).forEach(function (k) { d[k] = o[k]; }); });
+      defsList = defsList.filter(function (d) { return d.id !== 'stages'; });
+    }   // the stage-by-stage race is between two ways of building; the status quo has none
     return defsList;
   }
   /* The advantage as applications are added one at a time (today's first, then the roadmap), a bar for each. */
@@ -2632,6 +2690,21 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var take = headline + ' ' + (r.hardShare !== null
       ? tt('It pays back in {a} against {b}, and {share} of the value advantage is hard savings.', { a: months(r.os.paybackMonths, r.os.paybackWeek), b: months(r.alt.paybackMonths, r.alt.paybackWeek), share: pct(r.hardShare) })
       : tt('It pays back in {a} against {b}.', { a: months(r.os.paybackMonths, r.os.paybackWeek), b: months(r.alt.paybackMonths, r.alt.paybackWeek) }));
+    if (r.none) {   // against the status quo there is no second timeline or cost to set beside OutSystems', so the figures are OutSystems' own case and what waiting costs
+      var q = function (k, v, sub, tip, to) { return { k: k, v: v, s: sub, tip: tip, to: to, d: null }; };
+      tiles = [
+        q('Average time to production', tt('{n} wks', { n: f1(r.os.T.total) }), tt('OutSystems, for one application'), 'tileTtp', 'timeline'),
+        q('Net value of doing it', MS(adv), tt('against doing nothing · over {yrs}', { yrs: yrs }), 'tileNpvSq', 'bridge'),
+        q('Cost of waiting', tt('{amt} a month', { amt: MS(r.waitingPerMonth) }), tt('value not earned each month the applications are not live'), 'tileWait', 'timeline'),
+        q('Return on investment', roiTxt(r.os.roi), tt('over {yrs}', { yrs: yrs }), 'tileRoi', 'cost'),
+        q('Payback period', months(r.os.paybackMonths, r.os.paybackWeek), '', 'tilePay', 'payback'),
+        q('Peak cash outlay', MS(r.os.peakOutlay), '', 'tilePeak', 'payback'),
+        q('Run-rate annual value', MS(r.os.runRate), tt('{live} of {n} applications live', { live: r.os.liveProjects, n: n }), 'tileRun', 'timeline')
+      ];
+      take = (company ? tt('For {company}, compared with doing nothing, OutSystems delivers {amt} of net value over {yrs}, and each month of waiting costs about {wait}.', { company: company, amt: MS(adv), yrs: yrs, wait: MS(r.waitingPerMonth) })
+        : tt('Compared with doing nothing, OutSystems delivers {amt} of net value over {yrs}, and each month of waiting costs about {wait}.', { amt: MS(adv), yrs: yrs, wait: MS(r.waitingPerMonth) })) + ' ' +
+        (r.hardShare !== null ? tt('It pays back in {a}, and {share} of the value is hard savings.', { a: months(r.os.paybackMonths, r.os.paybackWeek), share: pct(r.hardShare) }) : tt('It pays back in {a}.', { a: months(r.os.paybackMonths, r.os.paybackWeek) }));
+    }
     var host = HOSTS[cfgKey()], cs = E.caseOf(state);
     var based = [
       (n === 1 ? tt('1 application') : tt('{n} applications', { n: n })) + (!anyQuote() ? ', ' + tt('{n} OutSystems developers', { n: f1(E.avgDevs(state)) }) : ', ' + tt('an OutSystems delivery quote of {amt}', { amt: MS(state.deliveryQuote) })),
@@ -2659,10 +2732,10 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     var named = state.company && state.company.trim();
     var vw = viewer(defs);
     $('sumsteps').innerHTML = vw.steps;   // the sub-tab row sits above the scenario row and the example-numbers banner, and stays in view
-    var cs0 = E.caseOf(state), ctxLine = '<div class="ctxline">' + esc(tt('{case} scenario', { case: cs0 ? tt(E.casesOf(state)[cs0].label) : tt('Custom') }) + ' · ' + (state.horizon === 1 ? tt('1 year') : tt('{n} years', { n: state.horizon })) + ' · ' + (state.hardOnly ? tt('Hard savings only') : tt('Soft benefits included'))) + '</div>';
+    var cs0 = E.caseOf(state), ctxLine = '<div class="ctxline"><span class="altbadge" data-kind="' + E.altKind(state) + '">' + esc(tt('OutSystems vs {alt}', { alt: altLabel() })) + '</span> ' + esc(tt('{case} scenario', { case: cs0 ? tt(E.casesOf(state)[cs0].label) : tt('Custom') }) + ' · ' + (state.horizon === 1 ? tt('1 year') : tt('{n} years', { n: state.horizon })) + ' · ' + (state.hardOnly ? tt('Hard savings only') : tt('Soft benefits included'))) + '</div>';
     if (rmRuns) ctxLine += '<div class="rmtoggle"><span class="seg" role="group" aria-label="' + esc(tt('Scenario in view')) + '"><button type="button" data-rmview="today"' + (viewScenario() === 'today' ? ' class="on"' : '') + '>' + esc(tt('Initial applications')) + '</button><button type="button" data-rmview="roadmap"' + (viewScenario() === 'roadmap' ? ' class="on"' : '') + '>' + esc(tt('Initial + roadmap')) + '</button></span></div>';
     $('summary').innerHTML = (named ? '' : '<div class="exbanner" role="button" tabindex="0" data-focusname="1"' + C.tip(tt('Example numbers'), tt('Click to go to the name box and name the assessment.')) + '><b>' + tt('Example numbers') + '</b> ' + tt('These are placeholders, not the customer\'s figures. Name the assessment and replace them.') + '</div>') + ctxLine + vw.body +
-      '<p class="note">' + tt('All figures use illustrative placeholder defaults, not benchmarks. Value is identical for both approaches; the advantage comes from cost and from reaching production sooner.') + '</p>';
+      '<p class="note">' + (noAlt() ? tt('All figures use illustrative placeholder defaults, not benchmarks.') + ' ' + tt('Value is what doing nothing costs today and OutSystems removes, so the result is OutSystems\' own case, not a comparison with another way of building.') : tt('All figures use illustrative placeholder defaults, not benchmarks. Value is identical for both approaches; the advantage comes from cost and from reaching production sooner.')) + '</p>';
     foldBoxes($('summary'));
   }
 
@@ -2740,7 +2813,8 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
       '<tr><td>' + esc(alt) + ' NPV</td><td colspan="' + years + '"></td>' + cell(r.alt.npv) + '</tr>' +
       '<tr><td>OutSystems NPV</td><td colspan="' + years + '"></td>' + cell(r.os.npv) + '</tr>' +
       '<tr class="tot"><td>Net value advantage</td><td colspan="' + years + '"></td>' + cell(r.advantage) + '</tr>';
-    return '<div class="finwrap"><table class="fin">' + head + block(alt, r.alt) + block('OutSystems', r.os) + foot + '</table></div>';
+    if (r.none) foot = '<tr class="grp"><td colspan="' + (years + 2) + '">' + tt('Present value (future years reduced by a {rate}% discount rate)', { rate: state.rate }) + '</td></tr><tr class="tot"><td>' + tt('Net value of doing it') + '</td><td colspan="' + years + '"></td>' + cell(r.os.npv) + '</tr>';
+    return '<div class="finwrap"><table class="fin">' + head + (r.none ? '' : block(alt, r.alt)) + block('OutSystems', r.os) + foot + '</table></div>';
   }
 
   /* How much is shown: a conversation (the story and the pipeline), the business case (adds the detail, the evidence and the costs), or everything, with the settings (admin). Each view includes the one before. */
@@ -3125,6 +3199,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     try { return fn(); } finally { state = real; baseState = null; }
   }
   function recalc() {
+    applyAltUi();
     C.setCurrency(state.currency, curOpts());
     E.ensureList(state); E.migrateMonths(state); E.deriveMonths(state);
     var real = state;   // with a roadmap, the results are drawn for the scenario in view (today, or with the roadmap); the inputs always stay on the assessment itself
@@ -3518,7 +3593,7 @@ var PHASE_COLORS = { ideate: 'var(--b1)', design: 'var(--b2)', build: 'var(--b3)
     recalc(); saveNow();
   }
   function resultRows() {
-    var r = res, rows = [], a = function (label, o, al, key) { rows.push([label, o, al, key]); };
+    var r = res, rows = [], a = function (label, o, al, key) { rows.push([label, o, r.none ? '' : al, key]); };   // the status quo has no figures of its own to set beside OutSystems'
     var cy = state.currency;
     a(tt('Average time to production (weeks)'), Math.round(r.os.T.total * 10) / 10, Math.round(r.alt.T.total * 10) / 10);
     a(tt('Net present value ({cur})', { cur: cy }), Math.round(r.os.npv), Math.round(r.alt.npv), 'npv');

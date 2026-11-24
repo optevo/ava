@@ -28,6 +28,73 @@
     { key: 'setup', label: 'Setup (one-off)' }
   ];
 
+  /* ---- Alternatives ("profiles") ----
+   * What OutSystems is compared with is a profile: a template that says what kind of alternative it is and which parts of the model apply to it. Adding an alternative is adding
+   * an entry here (or, for one an assessment carries itself, to state.profiles), with no change to the calculations.
+   *   kind 'build':  the alternative is a way of building and running the applications (cloud native with AI coding, or another platform). It has its own delivery team, licences,
+   *                  infrastructure, tokens, setup and time to production, which the build-side inputs describe.
+   *   kind 'none':   the alternative is not to build at all (the status quo). Nothing is delivered and nothing is spent on the alternative side, so the value drivers measure what
+   *                  doing nothing costs, and the result is OutSystems' own case against that.
+   * features say which build-side parts of the model and screens apply. A 'build' profile can start from its own template (patch: values for the build-side inputs, set once when it
+   * is first chosen). The build-side inputs themselves stay where they are in the state; switching profile keeps each build alternative's own copy (altStore) so nothing is lost. */
+  var BUILD_FEATURES = { team: true, platform: true, infra: true, ops: true, tokens: true, setup: true, assurance: true, timeline: true, delivery: true };
+  var NONE_FEATURES = { team: false, platform: false, infra: false, ops: false, tokens: false, setup: false, assurance: false, timeline: false, delivery: false };
+  var PROFILES = {
+    'code-ai': { name: 'AI coding + cloud native', kind: 'build', patch: null },
+    'status-quo': { name: 'Status quo (do nothing)', kind: 'none', patch: null },
+    appian: { name: 'Appian', kind: 'build', patch: null },
+    pega: { name: 'Pega', kind: 'build', patch: null },
+    salesforce: { name: 'Salesforce Platform', kind: 'build', patch: null },
+    servicenow: { name: 'ServiceNow', kind: 'build', patch: null },
+    'power-platform': { name: 'Microsoft Power Platform', kind: 'build', patch: null },
+    other: { name: 'Other (enter name)', kind: 'build', patch: null, named: true }
+  };
+  /* The profile in use: a built-in, or one the assessment carries (state.profiles: {id: {name, kind, patch}}); unknown ids fall back to cloud native. */
+  function profileOf(state) {
+    var id = (state && state.altType) || 'code-ai', own = state && state.profiles && state.profiles[id];
+    var p = own ? { name: own.name || id, kind: own.kind === 'none' ? 'none' : 'build', patch: own.patch || null } : (PROFILES[id] || PROFILES['code-ai']);
+    return { id: PROFILES[id] || own ? id : 'code-ai', name: p.name, kind: p.kind, patch: p.patch, named: !!p.named };
+  }
+  function allProfiles(state) {
+    var out = Object.keys(PROFILES).map(function (k) { return { id: k, name: PROFILES[k].name, kind: PROFILES[k].kind, builtIn: true }; });
+    Object.keys((state && state.profiles) || {}).forEach(function (k) { if (!PROFILES[k]) out.push({ id: k, name: state.profiles[k].name || k, kind: state.profiles[k].kind === 'none' ? 'none' : 'build', builtIn: false }); });
+    return out;
+  }
+  function altKind(state) { return profileOf(state).kind; }
+  /* OutSystems' build-token spend per application. Against a build alternative it is that alternative's spend less the saving; against the status quo there is nothing to measure against, so it is its own figure. */
+  function osTokenSpend(state) { return altKind(state) === 'none' ? num(state.tokens.osSpend) : num(state.tokens.spend) * (1 - clamp(num(state.tokens.saving), 0, 100) / 100); }
+  function altFeatures(state) { return altKind(state) === 'none' ? NONE_FEATURES : BUILD_FEATURES; }
+  /* The name to show for the alternative: its own name when the profile asks for one ("Other") and one is given, otherwise the profile's. */
+  function altLabel(state) { var p = profileOf(state); return p.named && state.altName ? state.altName : p.name; }
+  /* The inputs that belong to a build alternative alone (not shared with OutSystems), kept apart for each build alternative so switching between them loses nothing.
+   * Itemised breakdowns (infrastructure, tooling, operating people) hold both sides' figures in one list and are shared until a second build alternative needs its own. */
+  var BUILD_PATHS = ['platform.alt', 'infra.alt', 'tokens.spend', 'tokens.runPct', 'mix.alt', 'altDevFactor', 'opsFte.alt', 'setup.alt', 'maint.fix.alt', 'maint.enh.alt'];
+  function pathGet(o, p) { return p.split('.').reduce(function (a, k) { return a === undefined || a === null ? undefined : a[k]; }, o); }
+  function pathSet(o, p, v) { var ks = p.split('.'), i; for (i = 0; i < ks.length - 1; i++) { if (o[ks[i]] === undefined || o[ks[i]] === null) o[ks[i]] = {}; o = o[ks[i]]; } o[ks[ks.length - 1]] = v; }
+  /* Change which alternative OutSystems is compared with. The build-side inputs of the one being left are kept under its id, and a build alternative chosen later gets its own copy back
+   * (or, the first time, starts from the current figures with its template patch laid over them). Nothing else in the assessment changes. */
+  function switchAlt(state, id, name) {
+    var from = profileOf(state), to = (state.profiles && state.profiles[id]) || PROFILES[id];
+    if (!to) return state;
+    if (!state.altStore) state.altStore = {};
+    if (from.kind === 'build') { var snap = {}; BUILD_PATHS.forEach(function (p) { var v = pathGet(state, p); if (v !== undefined) snap[p] = JSON.parse(JSON.stringify(v)); }); state.altStore[from.id] = snap; }
+    state.altType = id;
+    if (to.kind !== 'none') {
+      var saved = state.altStore[id];
+      if (saved) Object.keys(saved).forEach(function (p) { pathSet(state, p, JSON.parse(JSON.stringify(saved[p]))); });
+      else if (to.patch) Object.keys(to.patch).forEach(function (p) { pathSet(state, p, JSON.parse(JSON.stringify(to.patch[p]))); });
+    }
+    state.altName = to.named ? (name || '') : to.name;
+    return state;
+  }
+  /* The status quo gets worse or stays flat while nothing is done: the yearly rise in the cost and risk that OutSystems would remove, as a % per year, from the start. Preset or typed. */
+  var DRIFT_PRESETS = { flat: 0, typical: 3, rising: 6 };
+  function driftPct(state) {
+    if (altKind(state) !== 'none') return 0;
+    var q = state.statusQuo || {};
+    return q.drift === 'custom' ? num(q.custom) : (DRIFT_PRESETS[q.drift] !== undefined ? DRIFT_PRESETS[q.drift] : 0);
+  }
+
   /* Illustrative defaults only. They are placeholders, not benchmarks. */
   function defaultState() {
     var st = {
@@ -35,8 +102,11 @@
       deckConfigs: 'one',  // the slides show one OutSystems configuration (the one chosen); 'all' shows every configuration for comparison
       deckNote: '',        // optional: the note in the footer of every slide (the default says the figures are placeholders until validated)
       currency: 'USD',
-      altType: 'code-ai',
+      altType: 'code-ai',   // which alternative OutSystems is compared with: a profile id (see PROFILES)
       altName: 'AI coding + cloud native',
+      altStore: {},         // each build alternative's own copy of the build-side inputs, kept when switching away (see switchAlt)
+      profiles: {},         // alternatives this assessment adds to the built-in ones: {id: {name, kind, patch}}
+      statusQuo: { drift: 'flat', custom: 0 },   // used when the alternative is the status quo: how the cost of doing nothing changes each year (flat, typical, rising or custom, % per year)
       horizon: 5,          // years
       rate: 10,            // discount rate, % per year
       /* Developers' experience with OutSystems, set on each delivery team. Less experienced developers are paid less but take longer, so the saving per day does not carry through to the cost,
@@ -177,7 +247,7 @@
       /* AI tokens. spend = what the alternative's build uses per application (US$100,000: agent-assisted design, build, test and review across a portfolio, well above the
        * published per-developer averages, since organisations report token costs as a real and growing line); runPct = the yearly spend after go-live as a % of that, for
        * AI-assisted fixes and changes and any model use inside the applications; saving = how much less OutSystems uses (25%: no source, so kept modest). Judgements to replace with measured figures. */
-      tokens: { spend: 100000, runPct: 40, saving: 25 },         // alt build token spend per project; OS % saving
+      tokens: { spend: 100000, runPct: 40, saving: 25, osSpend: 75000 },   // osSpend: OutSystems' own build-token spend per application, used against the status quo (the same as spend less the saving, so the default case does not change)         // alt build token spend per project; OS % saving
       value: { cost: 900000, risk: 360000, rev: 1500000 }, // seeds the first application's simple value calculators; after that the calculators hold the figures
       stages: {
         design: { alt: 3, os: 3 },
@@ -227,6 +297,7 @@
     if (state.skill && state.skill.levels) Object.keys(state.skill.levels).forEach(function (k) { var lv = state.skill.levels[k]; if (lv && (lv.pace === undefined || lv.discount === undefined)) { var d = levelOf(state, k); state.skill.levels[k] = { pace: d.pace, discount: d.discount, enable: d.enable }; } });   // files saved with effort multiples and pay levels
     if (state.org && state.org.auto === undefined) state.org.auto = !(num(state.org.employees) > 0 || num(state.org.customers) > 0);   // an older file with figures typed in keeps them
     applyOrgDefaults(state);
+    if (state.tokens && state.tokens.osSpend === undefined) state.tokens.osSpend = Math.round(num(state.tokens.spend) * (1 - clamp(num(state.tokens.saving), 0, 100) / 100));   // older assessments: start from the spend the saving implies
     if (state.tokens && state.tokens.spend === 40000) { state.tokens.spend = 100000; if (state.tokens.saving === 40) state.tokens.saving = 25; }   // the earlier defaults: spend a tiny share of the total, and a saving with no source; untouched token settings move to the new ones together
     if (state.run && typeof state.run === 'object') {   // an older assessment held one maintenance rate per approach: split it 40/60 (alternative) and 1/3, 2/3 (OutSystems), as the defaults do
       state.maint = { fix: { alt: Math.round(num(state.run.alt) * 0.4 * 100) / 100, os: Math.round(num(state.run.os) / 3 * 100) / 100 }, enh: { alt: Math.round(num(state.run.alt) * 0.6 * 100) / 100, os: Math.round(num(state.run.os) * 2 / 3 * 100) / 100 } };
@@ -416,7 +487,7 @@
     revenue: { type: 'revenue', basis: 'customers', units: 1000, per: 1000, uplift: 5, margin: 30, note: '' },
     risk: { type: 'risk', what: 'Risk', exposure: 0, reduction: 20, note: '' },
     /* The general calculators: each takes the business metric directly (volumes, rates, cost per unit), whatever the industry or the platform. */
-    handling: { type: 'handling', what: 'Transactions', group: 'ops', volume: 10000, mins: 5, salary: 0, mult: 1.3, how: 'capacity', realise: 50, auto: true, note: '' },
+    handling: { type: 'handling', what: 'Transactions', group: 'ops', volume: 10000, mins: 5, now: 0, salary: 0, mult: 1.3, how: 'capacity', realise: 50, auto: true, note: '' },   // now: minutes each takes today (optional; with it the cost of the current way can be shown)
     deflect: { type: 'deflect', what: 'Requests', volume: 20000, share: 30, per: 8, note: '' },
     completion: { type: 'completion', what: 'Applications started', units: 5000, from: 60, to: 65, per: 500, margin: 30, note: '' },
     errors: { type: 'errors', what: 'Transactions', volume: 20000, from: 5, to: 2, per: 50, note: '' },
@@ -424,6 +495,8 @@
     events: { type: 'events', what: 'Events', volume: 500, reduction: 20, per: 300, note: '' },
     other: { type: 'other', what: 'Other', amount: 0, how: 'cash', note: '' }
   };
+  /* Every calculator can say where its figures came from (src: customer, benchmark, estimate or assumption; blank = assumption) and which reason to act made it (reason). Blank by default, so a line round-trips the workbook unchanged. */
+  Object.keys(LINE_DEFAULTS).forEach(function (k) { LINE_DEFAULTS[k].src = ''; LINE_DEFAULTS[k].reason = ''; });
   /* Application types (use cases): a starting set of the general calculators with business wording and a sensible role. Numbers are placeholders; a type adds no arithmetic. */
   var USE_CASES = [
     ['General', [
@@ -607,6 +680,62 @@
     if (l.vs !== undefined) { out.cost *= num(l.vs); out.rev *= num(l.vs); out.risk *= num(l.vs); }
     return out;
   }
+  /* Reasons to act: the things that make doing nothing riskier than it looks. Each one is a ready-made risk line (a cost that arrives if nothing is done x the share OutSystems removes), added to the
+   * first application when ticked and removed when unticked, so it is worked out and reviewed like any other figure. The amounts are placeholders to replace with the customer's own. */
+  var REASONS = [
+    { id: 'support', label: 'A product we depend on is going out of support', what: 'Forced upgrade or extended support', exposure: 300000, reduction: 100, ask: 'What is the date, and what does the upgrade or extended support cost?' },
+    { id: 'regulatory', label: 'A regulatory or audit deadline is coming', what: 'Penalties, findings and remediation', exposure: 250000, reduction: 80, ask: 'Which finding or deadline, and what has a miss cost before?' },
+    { id: 'people', label: 'The process depends on a few people or is losing them', what: 'Cost of losing key people and covering the gap', exposure: 150000, reduction: 60, ask: 'How many people could leave without anyone else able to cover?' },
+    { id: 'incident', label: 'Manual work causes outages, errors or incidents', what: 'Incidents and data errors', exposure: 200000, reduction: 50, ask: 'How many incidents last year, and what did each cost?' },
+    { id: 'growth', label: 'Volumes are growing beyond what the current process can absorb', what: 'Extra staff or lost business as volumes grow', exposure: 200000, reduction: 70, ask: 'What volume growth is expected, and who would be hired to cope?' }
+  ];
+  function reasonOn(state, id) { return ensureList(state).some(function (p) { return (p.build || []).some(function (l) { return l.reason === id; }); }); }
+  function setReason(state, id, on) {
+    var R = REASONS.filter(function (x) { return x.id === id; })[0]; if (!R) return;
+    var list = ensureList(state);
+    if (on) {
+      if (reasonOn(state, id)) return;
+      var app = list.filter(function (p) { return p.include !== false; })[0] || list[0];
+      var l = newLine('risk'); l.what = R.what; l.exposure = R.exposure; l.reduction = R.reduction; l.reason = id; l.src = 'assumption'; l.note = R.ask;
+      (app.build = app.build || []).push(l);
+    } else list.forEach(function (p) { p.build = (p.build || []).filter(function (l) { return l.reason !== id; }); });
+  }
+  /* What the current way costs a year, for a calculator that has one (null when the figures do not say): the cost the saving is taken from. The calculators already hold what is needed:
+   * volume x time x pay for time-based work, volume x rate x cost for errors, and so on. Revenue and cycle-time calculators describe an uplift rather than a cost, so they have none. */
+  function lineToday(l) {
+    var pc = function (x) { return Math.max(0, num(x)) / 100; }, t = null;
+    if (l.type === 'labour') t = num(l.users) * num(l.salary) * num(l.mult);
+    else if (l.type === 'handling') t = num(l.now) > 0 ? num(l.volume) * num(l.now) / 60 * num(l.salary) * num(l.mult) / LINE_HOURS : null;
+    else if (l.type === 'deflect' || l.type === 'events') t = num(l.volume) * num(l.per);
+    else if (l.type === 'errors') t = num(l.volume) * pc(l.from) * num(l.per);
+    else if (l.type === 'decom') t = num(l.lic) + num(l.infra) + num(l.support) + num(l.fte) * num(l.fteCost);
+    else if (l.type === 'risk') t = num(l.exposure);
+    if (t === null || !(t > 0)) return null;
+    var v = lineValue(l), saved = v.cost + v.rev + v.risk;
+    return { today: t, saved: saved, share: saved / t };
+  }
+  /* How sure we are of a figure. Each calculator line can say where it came from; a line that says nothing is an assumption (including the starting figures worked out from the organisation's size). */
+  var SRC_KINDS = [['customer', 'Confirmed by the customer'], ['benchmark', 'Industry benchmark'], ['estimate', 'Our estimate'], ['assumption', 'Assumption']];
+  var SRC_DOUBT = { customer: 0, benchmark: 0.4, estimate: 0.7, assumption: 1 };   // how much of a line's value still needs checking
+  /* What to firm up with the customer first: the calculator lines ranked by how much of the value they carry and how weakly they are backed, so a few questions settle most of the doubt.
+   * Also how much of the value is confirmed. */
+  function firmUp(state) {
+    var list = ensureList(state), rows = [], total = 0, confirmed = 0;
+    list.forEach(function (p, i) {
+      if (p.include === false) return;
+      (p.build || []).forEach(function (l, j) {
+        var v = lineValue(l), val = v.cost + v.rev + v.risk, src = SRC_DOUBT[l.src] !== undefined ? l.src : 'assumption';
+        if (state.hardOnly) val = v.cost;
+        total += val; if (src === 'customer') confirmed += val;
+        rows.push({ app: i, line: j, appName: p.name || '', type: l.type, what: l.what || '', value: val, src: src, doubt: val * SRC_DOUBT[src], today: lineToday(l) });
+      });
+    });
+    var doubtTotal = 0; rows.forEach(function (r) { doubtTotal += r.doubt; });
+    rows.forEach(function (r) { r.share = total > 0 ? r.value / total : 0; r.doubtShare = doubtTotal > 0 ? r.doubt / doubtTotal : 0; });
+    rows = rows.filter(function (r) { return r.doubt > 0; }).sort(function (a, b) { return b.doubt - a.doubt; });
+    var run = 0; rows.forEach(function (r) { run += r.doubtShare; r.cumulative = run; });
+    return { rows: rows, total: total, confirmedShare: total > 0 ? confirmed / total : 0 };
+  }
   /* Two calculators in one application that can count the same saving: time saved per user or per transaction, and requests deflected. */
   function overlapping(build) {
     var t = {}; (build || []).forEach(function (l) { t[l.type] = true; });
@@ -702,7 +831,7 @@
       if (phase) a.phase = phase; return a;
     };
     s.platform = { alt: 150000, os: 100000, sentry: 15000 }; s.osHosting = 'paas'; s.assurance = { required: false, attest: true };
-    s.tokens.spend = 25000;   // the AI build tokens for a small application: the default (100,000) suits a larger one
+    s.tokens.spend = 25000; s.tokens.osSpend = 18750;   // the AI build tokens for a small application: the default (100,000) suits a larger one
     [0.1, 0.2, 0.1, 0.1, 0.05, 0.05].forEach(function (f, i) { s.opsItems[i].fte = f; });   // the alternative's platform team as part-time shares of its specialists: the lines at 5%
     ['Cloud architects (2 people at 5%)', 'DevOps / site reliability engineers (4 at 5%)', 'Platform testers (2 at 5%)', 'Security experts (2 at 5%)', 'Programme manager (1 at 5%)', 'Agile coach (1 at 5%)'].forEach(function (n, i) { s.opsItems[i].name = n; });
     s.roadmap = { licence: { os: 150000, sentry: 0 } };
@@ -1014,15 +1143,17 @@
   /* The steady-state cost of a year once every application is live (BAU): looking after the applications (break/fix and enhancement) and running the platform
    * (licences, tooling and services, infrastructure, operating people, security and compliance). Delivery, AI build tokens, one-off setup and the timing of value are left out. */
   function bauYear(state, ap) {
+    if (ap === 'alt' && altKind(state) === 'none') return { fix: 0, enh: 0, tokens: 0, platform: 0, tooling: 0, infra: 0, ops: 0, assure: 0, app: 0, nonApp: 0, total: 0 };
     var fix = 0, enh = 0;
     approachResult(state, ap).projects.forEach(function (p) { fix += p.teamCost * num(state.maint.fix[ap]) / 100; enh += p.teamCost * num(state.maint.enh[ap]) / 100; });
-    var tokPer = num(state.tokens.spend) * (ap === 'os' ? 1 - clamp(num(state.tokens.saving), 0, 100) / 100 : 1), tok = 0;
+    var tokPer = ap === 'os' ? osTokenSpend(state) : num(state.tokens.spend), tok = 0;
     approachResult(state, ap).projects.forEach(function (p) { tok += tokPer * p.scale * num(state.tokens.runPct) / 100; });
     var o = { fix: fix, enh: enh, tokens: tok, platform: licenceAnnual(state, ap) + roadmapLicence(state, ap), tooling: toolingAnnual(state, ap) * runShare(state), infra: infraAnnual(state, ap) * runShare(state), ops: opsWeekCost(state, ap) * WPY * runShare(state), assure: assureAnnual(state, ap) * runShare(state) };
     o.app = o.fix + o.enh + o.tokens; o.nonApp = o.platform + o.tooling + o.infra + o.ops + o.assure; o.total = o.app + o.nonApp;
     return o;
   }
   function approachResult(state, ap) {
+    var none = ap === 'alt' && altKind(state) === 'none';   // the status quo: nothing is built, bought or run on this side, and no application goes live
     var W = Math.max(1, Math.round(num(state.horizon) * WPY));
     var T = expectedTime(state, ap);
     var sched = schedule(state, T, ap);
@@ -1042,8 +1173,8 @@
     if (rmStart !== null) for (k = Math.max(0, Math.round(rmStart)); k < W; k += WPY, rmN++) cost.platform[k] += rmExtra * (hasPattern(rmPt) ? factorAt(rmPt, rmN) : (varies(state) ? Math.pow(1 + num((state.escal || {}).licence) / 100, yr(k)) : 1));
     addUniform(cost.setup, 0, setupWeeks(state, ap), setupAmount(state, ap));   // one-off, spread over the setup period
 
-    var ramp = Math.max(0, num(state.rampWeeks)), growth = num(state.growth) / 100;
-    var tokenPer = num(state.tokens.spend) * (ap === 'os' ? 1 - clamp(num(state.tokens.saving), 0, 100) / 100 : 1), tokenRunPct = num(state.tokens.runPct) / 100;
+    var ramp = Math.max(0, num(state.rampWeeks)), growth = num(state.growth) / 100, drift = driftPct(state) / 100;
+    var tokenPer = ap === 'os' ? osTokenSpend(state) : num(state.tokens.spend), tokenRunPct = num(state.tokens.runPct) / 100;
 
     /* Delivery cost: developers x role mix x rates x active weeks, times the rate level of the application's delivery group (the same people deliver
      * whichever approach is used, so a given cost for OutSystems sets the level for the alternative too). */
@@ -1081,7 +1212,7 @@
           var mid = kk + 0.5;
           if (mid < p.goLive) continue;
           var r = ramp > 0 ? clamp((mid - p.goLive) / ramp, 0, 1) : 1;
-          var g = Math.pow(1 + growth, (mid - p.goLive) / WPY);
+          var g = Math.pow(1 + growth, (mid - p.goLive) / WPY) * (drift ? Math.pow(1 + drift, mid / WPY) : 1);   // drift: the cost of doing nothing keeps rising from today, so the saving at go-live is already larger
           var an = lvary ? (lmemo[yr(kk)] || (lmemo[yr(kk)] = buildValueYear(p.build, yr(kk))))[d.key] : annual;
           val[d.key][kk] += an / WPY * r * g;
         }
@@ -1095,6 +1226,11 @@
         sched.forEach(function (p) { if (p.group === g.id) devs = Math.max(devs, num(p.devs)); });
         if (sk.enable > 0 && devs > 0) addUniform(cost.setup, start || 0, (start || 0) + 8, sk.enable * devs);
       });
+    }
+    if (none) {
+      COST_CATS.forEach(function (c) { cost[c.key] = zeros(W); });
+      DRIVERS.forEach(function (d) { val[d.key] = zeros(W); });
+      sched.forEach(function (p) { p.teamCost = 0; p.goLive = Infinity; });
     }
     var rateW = Math.pow(1 + num(state.rate) / 100, 1 / WPY) - 1;
     var df = zeros(W);
@@ -1133,7 +1269,7 @@
     var annualIncluded = sched.length ? annualTotal / sched.length : 0; // average per included application
 
     return {
-      ap: ap, W: W, T: T, projects: sched,
+      ap: ap, none: none, W: W, T: T, projects: sched,
       cost: cost, val: val, costTotal: costTotal, valueTotal: valueTotal, net: net, cum: cum,
       pvCost: pvCost, pvVal: pvVal, sumCost: sumCost, sumVal: sumVal,
       totalCost: totalCost, totalValue: totalValue, pvCostTotal: pvCostTotal, pvValueTotal: pvValTotal,
@@ -1173,10 +1309,18 @@
     var rl = state.realise || { advantage: 1, value: 1 }, f = Math.max(0, num(rl.advantage)), v = Math.max(0, num(rl.value));
     if (Math.abs(f - 1) < 1e-12 && Math.abs(v - 1) < 1e-12) return state;
     var s = JSON.parse(JSON.stringify(state)), lerp = function (a, o) { return num(a) + f * (num(o) - num(a)); };
-    Object.keys(s.stages).forEach(function (k) { s.stages[k].os = Math.max(0, lerp(s.stages[k].alt, s.stages[k].os)); });
-    s.gates.forEach(function (g) { ['w', 'r', 'f', 's'].forEach(function (k) { g.os[k] = lerp(g.alt[k], g.os[k]); }); g.os.s = Math.min(100, Math.max(1, g.os.s)); });
-    Object.keys(s.mix.os).forEach(function (k) { s.mix.os[k] = lerp(s.mix.alt[k], s.mix.os[k]); });
-    s.tokens.saving = Math.min(100, num(s.tokens.saving) * f);
+    if (altKind(state) === 'none') {
+      /* Against the status quo OutSystems stands on its own figures: nothing about a build alternative may reach the result. The scenario is how much longer (or shorter) delivery
+       * takes than planned: 60% of the claimed speed is 40% longer, 120% is 20% shorter. Stage times and the waits and reviews at each gate scale; the team and costs do not. */
+      var m = Math.max(0.1, 2 - f);
+      Object.keys(s.stages).forEach(function (k) { s.stages[k].os = num(s.stages[k].os) * m; });
+      s.gates.forEach(function (g) { g.os.w = num(g.os.w) * m; g.os.r = num(g.os.r) * m; });
+    } else {
+      Object.keys(s.stages).forEach(function (k) { s.stages[k].os = Math.max(0, lerp(s.stages[k].alt, s.stages[k].os)); });
+      s.gates.forEach(function (g) { ['w', 'r', 'f', 's'].forEach(function (k) { g.os[k] = lerp(g.alt[k], g.os[k]); }); g.os.s = Math.min(100, Math.max(1, g.os.s)); });
+      Object.keys(s.mix.os).forEach(function (k) { s.mix.os[k] = lerp(s.mix.alt[k], s.mix.os[k]); });
+      s.tokens.saving = Math.min(100, num(s.tokens.saving) * f);
+    }
     ['cost', 'risk', 'rev'].forEach(function (k) { s.value[k] = num(s.value[k]) * v; });
     if (s.projectList) s.projectList.forEach(function (p) {
       if (p.value) ['cost', 'risk', 'rev'].forEach(function (k) { p.value[k] = num(p.value[k]) * v; });
@@ -1280,21 +1424,21 @@
         delta: alt.pvCost[c.key] - os.pvCost[c.key] });
     });
     DRIVERS.forEach(function (d) {
-      bridge.push({ key: 'v_' + d.key, label: d.label + ' (earlier)', kind: 'value', hard: !d.soft,
+      bridge.push({ key: 'v_' + d.key, label: d.label + (alt.none ? '' : ' (earlier)'), kind: 'value', hard: !d.soft,
         delta: os.pvVal[d.key] - alt.pvVal[d.key] });
     });
     var advantage = os.npv - alt.npv, hard = 0, bridgeSum = 0;
     bridge.forEach(function (b) { bridgeSum += b.delta; if (b.hard) hard += b.delta; });
-    var weeksFaster = alt.T.total - os.T.total, codTotal = 0, i;
+    var none = alt.none, weeksFaster = none ? null : alt.T.total - os.T.total, codTotal = 0, i;
     /* Cost of delay avoided: each project's annual value / 52 x the weeks it goes live sooner with OutSystems. */
-    for (i = 0; i < alt.projects.length; i++) {
+    for (i = 0; !none && i < alt.projects.length; i++) {   // against the status quo there is no later go-live to compare with: see waitingPerMonth instead
       var pa = alt.projects[i], po = os.projects[i];
       codTotal += pa.annualIncluded / WPY * ((pa.goLive - pa.start) - (po.goLive - po.start));
     }
     /* Cost crossover: the first week from which OutSystems' cumulative cost stays at or below the alternative's. */
     var ca = 0, co = 0, lastAbove = -1, kk;
     for (kk = 0; kk < alt.W; kk++) { ca += alt.costTotal[kk]; co += os.costTotal[kk]; if (co > ca) lastAbove = kk; }
-    var crossoverWeek = lastAbove === alt.W - 1 ? null : lastAbove + 1;
+    var crossoverWeek = (none || lastAbove === alt.W - 1) ? null : lastAbove + 1;
     return {
       crossoverWeek: crossoverWeek, crossoverMonths: crossoverWeek === null ? null : crossoverWeek / WPY * 12,
       alt: alt, os: os, bridge: bridge, bridgeSum: bridgeSum, advantage: advantage,
@@ -1302,7 +1446,10 @@
       weeksFaster: weeksFaster,
       costOfDelayPerProject: alt.projects.length ? codTotal / alt.projects.length : 0,
       costOfDelayTotal: codTotal,
-      tokenSaving: alt.sumCost.tokens - os.sumCost.tokens
+      /* Against the status quo: what each month of not doing it costs, at the run rate of the included applications (the value OutSystems would deliver, before ramp-up). */
+      waitingPerMonth: none ? os.annualTotal / 12 : null,
+      none: none,
+      tokenSaving: none ? 0 : alt.sumCost.tokens - os.sumCost.tokens
     };
   }
 
@@ -1429,11 +1576,13 @@
   /* The net advantage with each key assumption pct% lower and pct% higher, one at a time, largest swing first. */
   function sensitivity(state, pct) {
     var f = (pct === undefined ? 25 : pct) / 100, base = run(state).advantage;
-    var rows = SENS.map(function (d) {
+    var none = altKind(state) === 'none';
+    var rows = SENS.filter(function (d) { return !(none && (d.key === 'altteam' || d.key === 'tokens')); }).map(function (d) {   // the status quo has no team or AI spend of its own
       var lo = cloneState(state), hi = cloneState(state);
       d.set(lo, 1 - f); d.set(hi, 1 + f);
       var a = run(lo).advantage - base, b = run(hi).advantage - base;
-      return { key: d.key, label: d.label, tip: d.tip, low: a, high: b, swing: Math.max(Math.abs(a), Math.abs(b)) };
+      var sq = none && d.key === 'speed';   // against the status quo the speed row is how much of the claimed delivery speed OutSystems achieves, not a race
+      return { key: d.key, label: sq ? 'How much of the claimed delivery speed arrives' : d.label, tip: sq ? 'How much of the claimed delivery speed OutSystems achieves. A smaller share delays go-live, so the value starts later.' : d.tip, low: a, high: b, swing: Math.max(Math.abs(a), Math.abs(b)) };
     });
     rows.sort(function (x, y) { return y.swing - x.swing; });
     return { base: base, pct: pct === undefined ? 25 : pct, rows: rows };
@@ -1490,7 +1639,7 @@
       var bump = function (w, p, v) { if (v > 0) w[p] = (w[p] || 0) + v; };
       var teamDays = 0;
       Object.keys(dom.phases).forEach(function (k) { var x = dom.phases[k][ap]; addEff(DK[k], 'team', x.days); add(DK[k], 'team', x.cost); teamDays += x.days; });
-      var tokPer = num(s.tokens.spend) * (ap === 'os' ? 1 - clamp(num(s.tokens.saving), 0, 100) / 100 : 1), tokBuild = 0;
+      var tokPer = ap === 'os' ? osTokenSpend(s) : num(s.tokens.spend), tokBuild = 0;
       res.projects.forEach(function (p) { if (p.start < res.W) tokBuild += tokPer * p.scale; });
       add('Build', 'tokens', Math.min(sc.tokens, tokBuild)); add('Operate', 'tokens', Math.max(0, sc.tokens - tokBuild));
       add('Evolve', 'run', sc.run);   // looking after the live applications (break/fix and enhancements) is Evolve
@@ -1590,6 +1739,8 @@
 
   var api = {
     WPY: WPY, CAT_INPUTS: CAT_INPUTS, costByPhase: costByPhase, typicalTime: typicalTime, typicalScale: typicalScale, linePhase: linePhase, sensitivity: sensitivity, mustBeTrue: mustBeTrue, breakEvenLicence: breakEvenLicence, roleBreakdown: roleBreakdown, domainBreakdown: domainBreakdown, hostingCompare: hostingCompare, assureAnnual: assureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, highAssureAnnual: highAssureAnnual, appAssureAnnual: appAssureAnnual, assuranceOn: assuranceOn, hostingOf: hostingOf, sentryUplift: sentryUplift, CASES: CASES, casesOf: casesOf, caseOf: caseOf, caseTable: caseTable, effectiveState: effectiveState, DOMAINS: DOMAINS, PHASES: PHASES, domainDefaults: domainDefaults, DRIVERS: DRIVERS, COST_CATS: COST_CATS,
+    REASONS: REASONS, reasonOn: reasonOn, setReason: setReason, lineToday: lineToday, firmUp: firmUp, SRC_KINDS: SRC_KINDS,
+    PROFILES: PROFILES, DRIFT_PRESETS: DRIFT_PRESETS, BUILD_PATHS: BUILD_PATHS, profileOf: profileOf, allProfiles: allProfiles, altKind: altKind, altFeatures: altFeatures, altLabel: altLabel, switchAlt: switchAlt, driftPct: driftPct,
     defaultState: defaultState, passProb: passProb, ROLES: ROLES, ALL_ROLES: ALL_ROLES, mixCost: mixCost, peoplePerDev: peoplePerDev, devsFor: devsFor, weekCost: weekCost,
     sizeFactor: sizeFactor, osDeliveryCost: osDeliveryCost, setupAmount: setupAmount, osSetupFor: osSetupFor, envBuild: envBuild, infraAnnual: infraAnnual, externalAnnual: externalAnnual, licenceAnnual: licenceAnnual, toolingAnnual: toolingAnnual, opsWeekCost: opsWeekCost, opsFteTotal: opsFteTotal,
     expandBreakdown: expandBreakdown, collapseBreakdown: collapseBreakdown, expectedTime: expectedTime,

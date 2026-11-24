@@ -124,6 +124,7 @@
       b += '<path d="' + d + '" fill="none" style="stroke:' + s.color + '" stroke-width="' + (s.width || 2.5) + '"' + (s.dash ? ' stroke-dasharray="6 4"' : '') + '/>';
     });
     (o.markers || []).forEach(function (mk) {
+      if (!mk) return;   // a marker that does not apply (for example the status quo has no payback)
       if (mk.week === null || mk.week === undefined) return;
       b += '<line x1="' + X(mk.week) + '" x2="' + X(mk.week) + '" y1="' + m.t + '" y2="' + (Y(0) - 5.5) + '" style="stroke:' + mk.color + '" stroke-dasharray="4 3"/>';   // stops at the top of the circle on the zero line
       b += '<circle cx="' + X(mk.week) + '" cy="' + Y(0) + '" r="5" style="fill:' + mk.color + '"' + tip(mk.label, mk.tip || tx('The point after which cumulative value minus cost stays at or above zero.')) + '/>';
@@ -294,7 +295,7 @@
   function gantt(o) {
     var rows = o.alt.length, rh = 28, w = 900, m = { l: 130, r: 14, t: 46, b: 28 }, h = m.t + rows * rh + m.b, pw = w - m.l - m.r;
     var lastLive = 0, i;
-    o.alt.concat(o.os).forEach(function (p) { if (p.goLive > lastLive) lastLive = p.goLive; });
+    (o.none ? o.os : o.alt.concat(o.os)).forEach(function (p) { if (p.goLive > lastLive) lastLive = p.goLive; });
     var span = Math.min(o.weeks, Math.max(52, Math.ceil((lastLive + 13) / 52) * 52));
     var X = function (wk) { return m.l + Math.min(wk, span) / span * pw; }, b = '';
     for (i = 0; i <= span / 52; i++) {
@@ -315,11 +316,12 @@
     for (i = 0; i < rows; i++) {
       var y = m.t + i * rh;
       var nm = o.alt[i].name || txf('Application {n}', { n: i + 1 }); b += labelBlock(m.l - 8, y + 14, nm, m.l - 14, { size: 10, color: '--muted' });
-      b += bar(o.alt[i], y + 3, 'var(--alt)', o.altLabel, i + 1, true);
+      if (!o.none) b += bar(o.alt[i], y + 3, 'var(--alt)', o.altLabel, i + 1, true);   // the status quo has no timeline of its own
       b += bar(o.os[i], y + 15, 'var(--os)', 'OutSystems', i + 1);
     }
-    b += '<rect x="' + m.l + '" y="6" width="14" height="6" style="fill:var(--alt)"/>' + text(m.l + 19, 14, o.altLabel, { size: 11, color: '--text' });
-    b += '<rect x="' + (m.l + 44 + o.altLabel.length * 7.4) + '" y="6" width="14" height="6" style="fill:var(--os)"/>' + text(m.l + 63 + o.altLabel.length * 7.4, 14, 'OutSystems', { size: 11, color: '--text' });
+    var lx = o.none ? 0 : 44 + o.altLabel.length * 7.4;   // the legend: the alternative first (not for the status quo), then OutSystems
+    if (!o.none) b += '<rect x="' + m.l + '" y="6" width="14" height="6" style="fill:var(--alt)"/>' + text(m.l + 19, 14, o.altLabel, { size: 11, color: '--text' });
+    b += '<rect x="' + (m.l + lx) + '" y="6" width="14" height="6" style="fill:var(--os)"/>' + text(m.l + lx + 19, 14, 'OutSystems', { size: 11, color: '--text' });
     b += text(m.l, 34, 'Solid = team working · light = review, rework and queues · diamond = live', { size: 10 });
     return svg(w, h, b, o.label || 'Application timeline');
   }

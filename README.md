@@ -26,6 +26,7 @@ Everything you type stays in your browser. It is kept in your browser's local st
 ## What it can do
 
 - Compare two approaches over a chosen period: delivery time, cost and value, with scenarios and a "how sure are we" view.
+- Compare OutSystems with a way of building (such as AI coding plus cloud native) or with doing nothing (the status quo). Against the status quo the value is what staying as is costs, shown next to the saving for each figure, with reasons to act and a short list of what to check with the customer first.
 - Build the value of each application from simple figures or calculators, and group applications into delivery teams that can start on different dates.
 - Export the assessment to Excel (readable sheets with formulas) and import it again, and export a PowerPoint (plain, unbranded).
 - Work in English, German, French, Spanish, Italian, Portuguese (European and Brazilian), Japanese, Korean, Traditional Chinese, Thai, Indonesian and Vietnamese. Translations are machine-assisted and not all reviewed.
